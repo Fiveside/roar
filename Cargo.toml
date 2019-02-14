@@ -1,6 +1,19 @@
 [package]
 name = "roar"
 version = "0.1.0"
-authors = ["Skyward"]
+authors = ["Erich Healy <ErichRHealy@gmail.com>"]
+edition = "2018"
+
+[lib]
+name = "roar"
+path = "src/lib.rs"
+
+[[bin]]
+name = "roar"
+path = "src/bin.rs"
 
 [dependencies]
+clap = "2.32"
+num = "0.2"
+num-derive = "*"
+num-traits = "*"
