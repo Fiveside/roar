@@ -4,8 +4,10 @@ use byteorder::{ByteOrder, LittleEndian, ReadBytesExt};
 use failure::ResultExt;
 use num::FromPrimitive;
 use std::io;
+use crc::crc16;
+use crc::crc16::Hasher16;
 
-#[derive(Debug, Copy, Clone, FromPrimitive)]
+#[derive(Debug, Copy, Clone, FromPrimitive, Eq, PartialEq)]
 pub enum HeadType {
     MarkerBlock = 0x72,
     ArchiveHeader = 0x73,
@@ -91,6 +93,33 @@ struct BlockHeadNg<'a> {
     add_size: Option<&'a [u8]>,
 }
 impl<'a> BlockHeadNg<'a> {
+    pub fn crc(&self) -> u16 {
+        LittleEndian::read_u16(&self.main[0..2])
+    }
+
+    pub fn crc_digest(&self) -> crc16::Digest {
+        let mut digest = crc::crc16::Digest::new(0x8005);
+        digest.write(&self.main[2..]);
+        if let Some(ref x) = self.add_size {
+            digest.write(x);
+        }
+        return digest;
+    }
+
+    pub fn block_type(&self) -> Option<HeadType> {
+        HeadType::from_u8(self.main[2])
+    }
+
+    pub fn flags(&self) -> u16 {
+        LittleEndian::read_u16(&self.main[3..5])
+    }
+
+    pub fn size(&self) -> u64 {
+        let add_size = self.add_size.map(|x| LittleEndian::read_u32(x)).unwrap_or(0);
+        let size = LittleEndian::read_u16(&self.main[5..7]);
+        u64::from(size) + u64::from(add_size)
+    }
+
     pub fn from(buf: &'a [u8]) -> Result<(BlockHeadNg<'a>, &'a [u8])> {
         if buf.len() < 7 {
             return Err(Error::buffer_too_small(7));
@@ -129,6 +158,27 @@ mod tests {
 
     fn magic_blockhead() -> Vec<u8> {
         vec![0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x00]
+    }
+
+    #[test]
+    fn test_blockhead_read_errors_with_not_enough_data() {
+        let res = BlockHeadNg::from(&[0]);
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_blockhead_read_reads_magic() {
+        let magic = magic_blockhead();
+        let res = BlockHeadNg::from(&magic);
+        assert!(res.is_ok());
+
+        let (bh, rest) = res.unwrap();
+        assert_eq!(bh.crc(), 0x6152);
+        assert_eq!(bh.block_type(), Some(HeadType::MarkerBlock));
+        assert_eq!(bh.flags(), 0x1a21);
+        assert_eq!(bh.size(), 0x0007);
+
+        assert_eq!(rest.len(), 0);
     }
 
     #[test]
