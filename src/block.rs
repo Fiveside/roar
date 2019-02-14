@@ -1,5 +1,7 @@
+use crate::error::{Error, Result};
 use bitflags::bitflags;
 use byteorder::{ByteOrder, LittleEndian, ReadBytesExt};
+use failure::ResultExt;
 use num::FromPrimitive;
 use std::io;
 
@@ -54,13 +56,15 @@ impl BlockHead {
         u64::from(self.size) + u64::from(self.add_size)
     }
 
-    pub fn read(mut cur: impl io::Read) -> Result<Self, io::Error> {
+    pub fn read(mut cur: impl io::Read) -> Result<Self> {
         let mut minblock: [u8; BLOCK_HEAD_SIZE] = unsafe { ::std::mem::uninitialized() };
-        cur.read_exact(&mut minblock)?;
+        cur.read_exact(&mut minblock)
+            .or(Err(Error::buffer_too_small(BLOCK_HEAD_SIZE)))?;
 
         let flags = LittleEndian::read_u16(&minblock[3..5]);
         let add_size = if flags & BlockFlags::HAS_ADD_SIZE.bits() > 0 {
-            cur.read_u32::<LittleEndian>()?
+            cur.read_u32::<LittleEndian>()
+                .or(Err(Error::buffer_too_small(BLOCK_HEAD_SIZE + 4)))?
         } else {
             0
         };
@@ -75,6 +79,49 @@ impl BlockHead {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Default)]
+struct BlockHeadNg<'a> {
+    // FIELD BYTES
+    // HEAD_CRC 2
+    // HEAD_TYPE 1
+    // HEAD_FLAGS 2
+    // HEAD_SIZE 2
+    // ADD_SIZE 4 (optional)
+    main: &'a [u8],
+    add_size: Option<&'a [u8]>,
+}
+impl<'a> BlockHeadNg<'a> {
+    pub fn from(buf: &'a [u8]) -> Result<(BlockHeadNg<'a>, &'a [u8])> {
+        if buf.len() < 7 {
+            return Err(Error::buffer_too_small(7));
+        }
+        let flags = LittleEndian::read_u16(&buf[3..5]);
+
+        let has_add_size = flags & BlockFlags::HAS_ADD_SIZE.bits() > 0;
+        if has_add_size && buf.len() < 7 + 4 {
+            return Err(Error::buffer_too_small(7 + 4));
+        }
+        let rest = if has_add_size {
+            &buf[(7 + 4)..]
+        } else {
+            &buf[7..]
+        };
+        let add_size = if has_add_size {
+            Some(&buf[7..(7 + 4)])
+        } else {
+            None
+        };
+
+        Ok((
+            BlockHeadNg {
+                main: &buf[0..7],
+                add_size: add_size,
+            },
+            rest,
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -85,7 +132,7 @@ mod tests {
     }
 
     #[test]
-    fn test_read_block_head_reads_block_head() {
+    fn test_read_old_block_head_reads_block_head() {
         let block_result = BlockHead::read(&mut Cursor::new(magic_blockhead()));
         assert!(block_result.is_ok());
 
@@ -97,20 +144,20 @@ mod tests {
     }
 
     #[test]
-    fn test_read_block_head_errors_when_not_enough_data() {
+    fn test_read_old_block_head_errors_when_not_enough_data() {
         let block_result = BlockHead::read(&mut Cursor::new(vec![0x00]));
         assert!(block_result.is_err());
     }
 
     #[test]
-    fn test_block_head_without_add_size_reports_size() {
+    fn test_old_block_head_without_add_size_reports_size() {
         let mut bh: BlockHead = Default::default();
         bh.size = 3;
         assert_eq!(bh.block_size(), 3);
     }
 
     #[test]
-    fn test_block_head_with_add_size_reports_size() {
+    fn test_old_block_head_with_add_size_reports_size() {
         let mut bh: BlockHead = Default::default();
         bh.size = 4;
         bh.add_size = 5;
