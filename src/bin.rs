@@ -21,5 +21,11 @@ fn main() -> Result<(), io::Error> {
     let filename = matches.value_of("file").unwrap();
     let mut file = io::BufReader::new(fs::File::open(filename)?);
 
+    for _ in 0..5 {
+        let block = block::BlockHead::read(&mut file)?;
+        println!("{:?}", block);
+        println!("{:?}, {:?}", block.block_type(), block.block_size());
+    }
+
     Ok(())
 }
