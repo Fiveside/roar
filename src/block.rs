@@ -82,7 +82,7 @@ impl BlockHead {
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
-struct BlockHeadNg<'a> {
+pub struct BlockHeadNg<'a> {
     // FIELD BYTES
     // HEAD_CRC 2
     // HEAD_TYPE 1
@@ -98,6 +98,7 @@ impl<'a> BlockHeadNg<'a> {
     }
 
     pub fn crc_digest(&self) -> crc16::Digest {
+        panic!("this method is broken still.");
         let mut digest = crc::crc16::Digest::new(0x8005);
         digest.write(&self.main[2..]);
         if let Some(ref x) = self.add_size {
