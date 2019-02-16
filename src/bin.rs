@@ -27,7 +27,7 @@ fn main() -> Result<()> {
     for _ in 0..2 {
         let mut buf = vec![0;7];
         file.read_exact(&mut buf).ok();
-        let blockres = block::BlockHeadNg::from(&buf);
+        let blockres = block::BlockHead::from(&buf);
         println!("{:?}", blockres);
         if blockres.is_err() {
             continue;
