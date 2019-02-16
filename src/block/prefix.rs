@@ -28,7 +28,7 @@ impl HeadType {
 }
 
 bitflags! {
-    struct BlockFlags: u16 {
+    struct PrefixFlags: u16 {
         const HAS_ADD_SIZE = 0x8000;
         const IS_DELETED = 0x4000;
 
@@ -64,7 +64,7 @@ bitflags! {
 //             .or(Err(Error::buffer_too_small(BLOCK_HEAD_SIZE)))?;
 
 //         let flags = LittleEndian::read_u16(&minblock[3..5]);
-//         let add_size = if flags & BlockFlags::HAS_ADD_SIZE.bits() > 0 {
+//         let add_size = if flags & PrefixFlags::HAS_ADD_SIZE.bits() > 0 {
 //             cur.read_u32::<LittleEndian>()
 //                 .or(Err(Error::buffer_too_small(BLOCK_HEAD_SIZE + 4)))?
 //         } else {
@@ -82,7 +82,7 @@ bitflags! {
 // }
 
 #[derive(Debug, Clone, PartialEq, Default)]
-pub struct BlockHead<'a> {
+pub struct BlockPrefix<'a> {
     // FIELD BYTES
     // HEAD_CRC 2
     // HEAD_TYPE 1
@@ -92,7 +92,7 @@ pub struct BlockHead<'a> {
     main: &'a [u8],
     add_size: Option<&'a [u8]>,
 }
-impl<'a> BlockHead<'a> {
+impl<'a> BlockPrefix<'a> {
     pub fn crc(&self) -> u16 {
         LittleEndian::read_u16(&self.main[0..2])
     }
@@ -121,13 +121,13 @@ impl<'a> BlockHead<'a> {
         u64::from(size) + u64::from(add_size)
     }
 
-    pub fn from(buf: &'a [u8]) -> Result<(BlockHead<'a>, &'a [u8])> {
+    pub fn from(buf: &'a [u8]) -> Result<(BlockPrefix<'a>, &'a [u8])> {
         if buf.len() < 7 {
             return Err(Error::buffer_too_small(7));
         }
         let flags = LittleEndian::read_u16(&buf[3..5]);
 
-        let has_add_size = flags & BlockFlags::HAS_ADD_SIZE.bits() > 0;
+        let has_add_size = flags & PrefixFlags::HAS_ADD_SIZE.bits() > 0;
         if has_add_size && buf.len() < 7 + 4 {
             return Err(Error::buffer_too_small(7 + 4));
         }
@@ -143,7 +143,7 @@ impl<'a> BlockHead<'a> {
         };
 
         Ok((
-            BlockHead {
+            BlockPrefix {
                 main: &buf[0..7],
                 add_size: add_size,
             },
@@ -156,28 +156,28 @@ impl<'a> BlockHead<'a> {
 mod tests {
     use super::*;
 
-    fn magic_blockhead() -> Vec<u8> {
+    fn magic_BlockPrefix() -> Vec<u8> {
         vec![0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x00]
     }
 
     #[test]
-    fn test_blockhead_read_errors_with_not_enough_data() {
-        let res = BlockHead::from(&[0]);
+    fn test_blockprefix_read_errors_with_not_enough_data() {
+        let res = BlockPrefix::from(&[0]);
         assert!(res.is_err());
     }
 
     #[test]
-    fn test_blockhead_read_errors_with_not_enough_data_from_add_data() {
-        let mut buf = magic_blockhead();
+    fn test_blockprefix_read_errors_with_not_enough_data_from_add_data() {
+        let mut buf = magic_BlockPrefix();
         buf[4] = 0x80;
-        let res = BlockHead::from(&buf);
+        let res = BlockPrefix::from(&buf);
         assert!(res.is_err());
     }
 
     #[test]
-    fn test_blockhead_read_reads_magic() {
-        let magic = magic_blockhead();
-        let res = BlockHead::from(&magic);
+    fn test_blockprefix_read_reads_magic() {
+        let magic = magic_BlockPrefix();
+        let res = BlockPrefix::from(&magic);
         assert!(res.is_ok());
 
         let (bh, rest) = res.unwrap();

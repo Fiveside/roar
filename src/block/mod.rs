@@ -1,3 +1,3 @@
 mod prefix;
 
-pub use prefix::BlockHead;
+pub use prefix::BlockPrefix;
