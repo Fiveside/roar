@@ -1,11 +1,11 @@
 use crate::error::{Error, Result};
 use bitflags::bitflags;
 use byteorder::{ByteOrder, LittleEndian, ReadBytesExt};
+use crc::crc16;
+use crc::crc16::Hasher16;
 use failure::ResultExt;
 use num::FromPrimitive;
 use std::io;
-use crc::crc16;
-use crc::crc16::Hasher16;
 
 #[derive(Debug, Copy, Clone, FromPrimitive, Eq, PartialEq)]
 pub enum HeadType {
@@ -81,7 +81,7 @@ bitflags! {
 //     }
 // }
 
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct BlockPrefix<'a> {
     // FIELD BYTES
     // HEAD_CRC 2
@@ -92,14 +92,15 @@ pub struct BlockPrefix<'a> {
     main: &'a [u8],
     add_size: Option<&'a [u8]>,
 }
+
 impl<'a> BlockPrefix<'a> {
     pub fn crc(&self) -> u16 {
         LittleEndian::read_u16(&self.main[0..2])
     }
 
-    pub fn crc_digest(&self) -> crc16::Digest {
-        panic!("this method is broken still.");
-        let mut digest = crc::crc16::Digest::new(0x8005);
+    pub fn crc_digest(&self, seed: u16) -> crc16::Digest {
+        // panic!("this method is broken still.");
+        let mut digest = crc::crc16::Digest::new(seed);
         digest.write(&self.main[2..]);
         if let Some(ref x) = self.add_size {
             digest.write(x);
@@ -116,7 +117,10 @@ impl<'a> BlockPrefix<'a> {
     }
 
     pub fn size(&self) -> u64 {
-        let add_size = self.add_size.map(|x| LittleEndian::read_u32(x)).unwrap_or(0);
+        let add_size = self
+            .add_size
+            .map(|x| LittleEndian::read_u32(x))
+            .unwrap_or(0);
         let size = LittleEndian::read_u16(&self.main[5..7]);
         u64::from(size) + u64::from(add_size)
     }
