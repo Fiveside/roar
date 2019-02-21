@@ -27,12 +27,12 @@ fn main() -> Result<()> {
 
     let mut restbuf = Vec::<u8>::new();
 
-    for _ in 0..2 {
+    for _ in 0..3 {
         let mut buf = restbuf.clone();
-        buf.resize(13, 0);
+        buf.resize(36, 0);
         file.read_exact(&mut buf[restbuf.len()..]).ok();
 
-        let blockres = block::BlockPrefix::from(&buf);
+        let blockres = block::BlockPrefix::from_buf(&buf);
         println!("{:?}", blockres);
         if blockres.is_err() {
             continue;
@@ -45,6 +45,9 @@ fn main() -> Result<()> {
             Some(block::HeadType::MarkerBlock) => parse_marker(&mut restbuf, &mut buf, &mut file)?,
             Some(block::HeadType::ArchiveHeader) => {
                 parse_archive(&mut restbuf, &mut buf, &mut file)?
+            }
+            Some(block::HeadType::FileHeader) => {
+                parse_file_header(&mut restbuf, &mut buf, &mut file)?
             }
             _ => println!("Don't have this yet lol: {:?}", block.block_type()),
         }
@@ -62,7 +65,7 @@ fn main() -> Result<()> {
 }
 
 fn parse_marker(restbuf: &mut Vec<u8>, buf: &mut Vec<u8>, file: &mut impl Read) -> Result<()> {
-    let (blk, rest) = block::BlockPrefix::from(buf)?;
+    let (blk, rest) = block::BlockPrefix::from_buf(buf)?;
     println!("{:?}", blk.crc());
     println!("{:?}", blk.block_type());
     println!("{:?}", blk.flags());
@@ -76,6 +79,8 @@ fn parse_marker(restbuf: &mut Vec<u8>, buf: &mut Vec<u8>, file: &mut impl Read) 
 fn parse_archive(restbuf: &mut Vec<u8>, buf: &mut Vec<u8>, file: &mut impl Read) -> Result<()> {
     let (arc, rest) = block::ArchiveHeader::from(buf)?;
     println!("Archive: {:?}", arc);
+    println!("Reserved 1: {:?}", arc.reserved1());
+    println!("Reserved 2: {:?}", arc.reserved2());
     println!("CRC Expect: {:?}", arc.prefix().crc());
     // println!("CRC Actual: {:?}", arc.crc_digest().sum16());
 
@@ -88,5 +93,12 @@ fn parse_archive(restbuf: &mut Vec<u8>, buf: &mut Vec<u8>, file: &mut impl Read)
 
     restbuf.truncate(0);
     restbuf.extend(rest);
+    Ok(())
+}
+
+fn parse_file_header(restbuf: &mut Vec<u8>, buf: &mut Vec<u8>, file: &mut impl Read) -> Result<()> {
+    let (arcfile, rest) = block::FilePrefix::from_buf(buf)?;
+    // let (arcfile, rest) = block::FileHeader::from(buf)?;
+
     Ok(())
 }

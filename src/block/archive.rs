@@ -1,5 +1,6 @@
 use super::BlockPrefix;
 use crate::error::{Error, Result};
+use byteorder::{ByteOrder, LittleEndian, ReadBytesExt};
 use crc::crc16;
 use crc::crc16::Hasher16;
 
@@ -7,14 +8,15 @@ use crc::crc16::Hasher16;
 pub struct ArchiveHeader<'a> {
     prefix: BlockPrefix<'a>,
 
-    // RESERVED1 2 bytes
-    // RESERVED2 4 bytes
+    // HighPosAv 2 bytes
+    // PosAv 4 bytes
+    // Optional 1 byte EncryptVer (not implemented right now)
     buf: &'a [u8],
 }
 
 impl<'a> ArchiveHeader<'a> {
     pub fn from(buf: &'a [u8]) -> Result<(ArchiveHeader<'a>, &'a [u8])> {
-        let (prefix, prefix_rest) = BlockPrefix::from(buf)?;
+        let (prefix, prefix_rest) = BlockPrefix::from_buf(buf)?;
         if prefix_rest.len() < 6 {
             return Err(Error::buffer_too_small(buf.len() - prefix_rest.len() + 6));
         }
@@ -38,6 +40,14 @@ impl<'a> ArchiveHeader<'a> {
         digest.write(self.buf);
         return digest;
     }
+
+    pub fn reserved1(&self) -> u16 {
+        LittleEndian::read_u16(self.buf)
+    }
+
+    pub fn reserved2(&self) -> u32 {
+        LittleEndian::read_u32(&self.buf[2..])
+    }
 }
 
 #[cfg(test)]
@@ -50,7 +60,7 @@ mod tests {
 
     fn archive_header() -> Vec<u8> {
         let mut buf = archive_header_prefix();
-        buf.extend(&[0, 0, 0, 0, 0, 0]);
+        buf.extend(&[1, 0, 2, 0, 0, 0]);
         buf
     }
 
@@ -67,5 +77,13 @@ mod tests {
     #[test]
     fn test_archive_header_parses() {
         assert!(ArchiveHeader::from(&archive_header()).is_ok());
+    }
+
+    #[test]
+    fn test_archive_header_reads_reserved() {
+        let buf = archive_header();
+        let (head, _) = ArchiveHeader::from(&buf).unwrap();
+        assert_eq!(head.reserved1(), 1);
+        assert_eq!(head.reserved2(), 2);
     }
 }
