@@ -90,7 +90,7 @@ pub struct BlockPrefix<'a> {
     // HEAD_SIZE 2
     // ADD_SIZE 4 (optional)
     main: &'a [u8],
-    add_size: Option<&'a [u8]>,
+    // add_size: Option<&'a [u8]>,
 }
 
 impl<'a> BlockPrefix<'a> {
@@ -102,9 +102,9 @@ impl<'a> BlockPrefix<'a> {
         // panic!("this method is broken still.");
         let mut digest = crc::crc16::Digest::new(seed);
         digest.write(&self.main[2..]);
-        if let Some(ref x) = self.add_size {
-            digest.write(x);
-        }
+        // if let Some(ref x) = self.add_size {
+        //     digest.write(x);
+        // }
         return digest;
     }
 
@@ -117,41 +117,42 @@ impl<'a> BlockPrefix<'a> {
     }
 
     pub fn size(&self) -> u64 {
-        let add_size = self
-            .add_size
-            .map(|x| LittleEndian::read_u32(x))
-            .unwrap_or(0);
-        let size = LittleEndian::read_u16(&self.main[5..7]);
-        u64::from(size) + u64::from(add_size)
+        // let add_size = self
+        //     .add_size
+        //     .map(|x| LittleEndian::read_u32(x))
+        //     .unwrap_or(0);
+        // let size = LittleEndian::read_u16(&self.main[5..7]);
+        // u64::from(size) + u64::from(add_size)
+        u64::from(LittleEndian::read_u16(&self.main[5..7]))
     }
 
-    pub fn from(buf: &'a [u8]) -> Result<(BlockPrefix<'a>, &'a [u8])> {
+    pub fn from_buf(buf: &'a [u8]) -> Result<(BlockPrefix<'a>, &'a [u8])> {
         if buf.len() < 7 {
             return Err(Error::buffer_too_small(7));
         }
-        let flags = LittleEndian::read_u16(&buf[3..5]);
+        // let flags = LittleEndian::read_u16(&buf[3..5]);
 
-        let has_add_size = flags & PrefixFlags::HAS_ADD_SIZE.bits() > 0;
-        if has_add_size && buf.len() < 7 + 4 {
-            return Err(Error::buffer_too_small(7 + 4));
-        }
-        let rest = if has_add_size {
-            &buf[(7 + 4)..]
-        } else {
-            &buf[7..]
-        };
-        let add_size = if has_add_size {
-            Some(&buf[7..(7 + 4)])
-        } else {
-            None
-        };
+        // let has_add_size = flags & PrefixFlags::HAS_ADD_SIZE.bits() > 0;
+        // if has_add_size && buf.len() < 7 + 4 {
+        //     return Err(Error::buffer_too_small(7 + 4));
+        // }
+        // let rest = if has_add_size {
+        //     &buf[(7 + 4)..]
+        // } else {
+        //     &buf[7..]
+        // };
+        // let add_size = if has_add_size {
+        //     Some(&buf[7..(7 + 4)])
+        // } else {
+        //     None
+        // };
 
         Ok((
             BlockPrefix {
                 main: &buf[0..7],
-                add_size: add_size,
+                // add_size: add_size,
             },
-            rest,
+            &buf[7..],
         ))
     }
 }
@@ -160,28 +161,28 @@ impl<'a> BlockPrefix<'a> {
 mod tests {
     use super::*;
 
-    fn magic_BlockPrefix() -> Vec<u8> {
+    fn magic_block_prefix() -> Vec<u8> {
         vec![0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x00]
     }
 
     #[test]
-    fn test_blockprefix_read_errors_with_not_enough_data() {
-        let res = BlockPrefix::from(&[0]);
+    fn test_block_prefix_read_errors_with_not_enough_data() {
+        let res = BlockPrefix::from_buf(&[0]);
         assert!(res.is_err());
     }
 
-    #[test]
-    fn test_blockprefix_read_errors_with_not_enough_data_from_add_data() {
-        let mut buf = magic_BlockPrefix();
-        buf[4] = 0x80;
-        let res = BlockPrefix::from(&buf);
-        assert!(res.is_err());
-    }
+    // #[test]
+    // fn test_block_prefix_read_errors_with_not_enough_data_from_add_data() {
+    //     let mut buf = magic_block_prefix();
+    //     buf[4] = 0x80;
+    //     let res = BlockPrefix::from_buf(&buf);
+    //     assert!(res.is_err());
+    // }
 
     #[test]
-    fn test_blockprefix_read_reads_magic() {
-        let magic = magic_BlockPrefix();
-        let res = BlockPrefix::from(&magic);
+    fn test_block_prefix_read_reads_magic() {
+        let magic = magic_block_prefix();
+        let res = BlockPrefix::from_buf(&magic);
         assert!(res.is_ok());
 
         let (bh, rest) = res.unwrap();
