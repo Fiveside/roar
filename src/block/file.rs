@@ -1,5 +1,6 @@
 use super::BlockPrefix;
 use crate::error::{Error, Result};
+use bitflags::bitflags;
 use byteorder::{ByteOrder, LittleEndian, ReadBytesExt};
 use num::FromPrimitive;
 
@@ -32,6 +33,34 @@ enum PackingMethod {
 impl PackingMethod {
     fn from_u8(that: u8) -> Option<PackingMethod> {
         FromPrimitive::from_u8(that)
+    }
+}
+
+bitflags! {
+    struct FileFlags: u16 {
+        const ContinuedFromPreviousVolume = 0b0000_0000_0000_0001;
+        const ContinuedToNextVolume = 0b0000_0000_0000_0010;
+        const Encrypted = 0b0000_0000_0000_0100;
+        const CommentPresent = 0b0000_0000_0000_1000;
+        const Solid = 0b0000_0000_0001_0000;
+        const Dictionary1 = 0b0000_0000_0010_0000;
+        const Dictionary2 = 0b0000_0000_0100_0000;
+        const Dictionary3 = 0b0000_0000_1000_0000;
+        const HighFields = 0b0000_0001_0000_0000;
+
+        // FILE_NAME contains both usual and encoded Unicode name separated by
+        // zero. In this case NAME_SIZE field is equal to the length of usual
+        // name plus encoded Unicode name plus 1. If this flag is present,
+        // but FILE_NAME does not contain zero bytes, it means that file name
+        // is encoded using UTF-8.
+        const UnicodeFilename = 0b0000_0010_0000_0000;
+
+        const Salted = 0b0000_0100_0000_0000;
+        const Versioned = 0b0000_1000_0000_0000;
+        const ExtTime = 0b0001_0000_0000_0000;
+
+        // This flag should always be set
+        const Always = 0b1000_0000_0000_0000;
     }
 }
 
@@ -68,6 +97,10 @@ impl<'a> FilePrefix<'a> {
 
     fn prefix(&self) -> BlockPrefix {
         self.block_prefix
+    }
+
+    fn flags(&self) -> FileFlags {
+        FileFlags::from_bits_truncate(self.prefix().flags())
     }
 
     fn low_compress_size(&self) -> u32 {
@@ -108,48 +141,72 @@ impl<'a> FilePrefix<'a> {
     }
 }
 
-// #[derive(Debug, Copy, Clone)]
-// pub struct FileHeader<'a> {
-//     prefix: BlockPrefix<'a>,
-//     // PACK_SIZE       4                Compressed file size
-//     // UNP_SIZE        4                Uncompressed file size
-//     // HOST_OS         1                Operating system used for archiving (See the 'Operating System Indicators' table for the flags used)
-//     // FILE_CRC        4                File CRC
-//     // FTIME           4                Date and time in standard MS DOS format
-//     // UNP_VER         1                RAR version needed to extract file (Version number is encoded as 10 * Major version + minor version.)
-//     // METHOD          1                Packing method (Please see 'Packing Method' table for all possibilities
-//     // NAME_SIZE       2                File name size
-//     // ATTR            4                File attributes
-//     // HIGH_PACK_SIZE  4                High 4 bytes of 64-bit value of compressed file size. Optional value, presents only if bit 0x100 in HEAD_FLAGS is set.
-//     // HIGH_UNP_SIZE   4                High 4 bytes of 64-bit value of uncompressed file size. Optional value, presents only if bit 0x100 in HEAD_FLAGS is set.
-//     // FILE_NAME       NAME_SIZE bytes  File name - string of NAME_SIZE bytes size
-//     // SALT            8                present if (HEAD_FLAGS & 0x400) != 0
-//     // EXT_TIME        variable size    present if (HEAD_FLAGS & 0x1000) != 0
+#[derive(Debug, Copy, Clone)]
+pub struct FileHeader<'a> {
+    prefix: FilePrefix<'a>,
 
-//     // holds [PACK_SIZE, ATTR]
-//     buf: &'a [u8],
+    // HIGH_PACK_SIZE 4
+    // HIGH_UNPACK_SIZE 4
+    // holds [HIGH_PACK_SIZE, HIGH_UNP_SIZE]
+    high_size: Option<&'a [u8]>,
 
-//     // holds [HIGH_PACK_SIZE, HIGH_UNP_SIZE]
-//     high_size: Option<&'a [u8]>,
+    // holds file_name
+    file_name: &'a [u8],
 
-//     // holds file_name
-//     file_name: &'a [u8],
+    // SALT 8
+    // holds salt
+    salt: Option<&'a [u8]>,
 
-//     // holds salt
-//     salt: Option<&'a [u8]>,
+    // holds EXT_TIME
+    ext_time: Option<&'a [u8]>,
+}
 
-//     // holds EXT_TIME
-//     ext_time: Option<&'a [u8]>,
-// }
+impl<'a> FileHeader<'a> {
+    pub fn from_buf(buf: &'a [u8]) -> Result<(FileHeader<'a>, &'a [u8])> {
+        let (prefix, prefix_rest) = FilePrefix::from_buf(buf)?;
+        let flags = prefix.flags();
 
-// impl<'a> FileHeader<'a> {
-//     pub fn from_buf(buf: &'a [u8]) -> Result<(FileHeader<'a>, &'a [u8])> {
-//         if buf.len() < 25 {
-//             return Err(Error::buffer_too_small(25));
-//         }
-//         let
-//     }
-// }
+        let (high_size, high_rest) = if flags.contains(FileFlags::HighFields) {
+            if prefix_rest.len() < 8 {
+                return Err(Error::buffer_too_small(buf.len() - prefix_rest.len() + 8));
+            }
+            (Some(&prefix_rest[0..8]), &prefix_rest[8..])
+        } else {
+            (None, prefix_rest)
+        };
+
+        let name_size = usize::from(prefix.name_size());
+        if high_rest.len() < name_size {
+            return Err(Error::buffer_too_small(
+                buf.len() - high_rest.len() + name_size,
+            ));
+        }
+        let name = &high_rest[0..name_size];
+        let name_rest = &high_rest[name_size..];
+
+        let (salt, salt_rest) = if flags.contains(FileFlags::Salted) {
+            if name_rest.len() < 8 {
+                return Err(Error::buffer_too_small(buf.len() - name_rest.len() + 8));
+            }
+            (Some(&name_rest[0..8]), &name_rest[8..])
+        } else {
+            (None, name_rest)
+        };
+
+        // TODO: ext_time
+
+        Ok((
+            FileHeader {
+                prefix: prefix,
+                high_size: high_size,
+                file_name: name,
+                salt: salt,
+                ext_time: None,
+            },
+            salt_rest,
+        ))
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -223,5 +280,13 @@ mod tests {
         let buf = prefix_buf();
         let (prefix, _) = FilePrefix::from_buf(&buf).unwrap();
         assert_eq!(prefix.file_attrs(), 32);
+    }
+
+    #[test]
+    fn test_gets_flags() {
+        let buf = prefix_buf();
+        let (prefix, _) = FilePrefix::from_buf(&buf).unwrap();
+        let expected = FileFlags::Dictionary3 | FileFlags::ExtTime | FileFlags::Always;
+        assert_eq!(prefix.flags(), FileFlags::Dictionary3 | expected);
     }
 }

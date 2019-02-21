@@ -29,7 +29,7 @@ fn main() -> Result<()> {
 
     for _ in 0..3 {
         let mut buf = restbuf.clone();
-        buf.resize(36, 0);
+        buf.resize(128, 0);
         file.read_exact(&mut buf[restbuf.len()..]).ok();
 
         let blockres = block::BlockPrefix::from_buf(&buf);
@@ -97,7 +97,8 @@ fn parse_archive(restbuf: &mut Vec<u8>, buf: &mut Vec<u8>, file: &mut impl Read)
 }
 
 fn parse_file_header(restbuf: &mut Vec<u8>, buf: &mut Vec<u8>, file: &mut impl Read) -> Result<()> {
-    let (arcfile, rest) = block::FilePrefix::from_buf(buf)?;
+    let (arcfile, rest) = block::FileHeader::from_buf(buf)?;
+    println!("Got a file header: {:?}", arcfile);
     // let (arcfile, rest) = block::FileHeader::from(buf)?;
 
     Ok(())
