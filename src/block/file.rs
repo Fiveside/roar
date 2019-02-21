@@ -19,6 +19,22 @@ impl OperatingSystem {
     }
 }
 
+#[derive(Debug, Copy, Clone, FromPrimitive, Eq, PartialEq)]
+enum PackingMethod {
+    Store = 0x30,
+    Fastest = 0x31,
+    Fast = 0x32,
+    Normal = 0x33,
+    Good = 0x34,
+    Best = 0x35,
+}
+
+impl PackingMethod {
+    fn from_u8(that: u8) -> Option<PackingMethod> {
+        FromPrimitive::from_u8(that)
+    }
+}
+
 #[derive(Debug, Copy, Clone)]
 pub struct FilePrefix<'a> {
     block_prefix: BlockPrefix<'a>,
@@ -50,6 +66,10 @@ impl<'a> FilePrefix<'a> {
         ))
     }
 
+    fn prefix(&self) -> BlockPrefix {
+        self.block_prefix
+    }
+
     fn low_compress_size(&self) -> u32 {
         LittleEndian::read_u32(&self.buf[0..4])
     }
@@ -60,6 +80,31 @@ impl<'a> FilePrefix<'a> {
 
     fn creation_os(&self) -> Option<OperatingSystem> {
         OperatingSystem::from_u8(self.buf[8])
+    }
+
+    fn file_crc32(&self) -> u32 {
+        LittleEndian::read_u32(&self.buf[9..9 + 4])
+    }
+
+    fn ftime_raw(&self) -> u32 {
+        LittleEndian::read_u32(&self.buf[13..13 + 4])
+    }
+
+    // This might need an enum later as well...
+    fn unpack_version(&self) -> u8 {
+        self.buf[17]
+    }
+
+    fn packing_method(&self) -> Option<PackingMethod> {
+        PackingMethod::from_u8(self.buf[18])
+    }
+
+    fn name_size(&self) -> u16 {
+        LittleEndian::read_u16(&self.buf[19..21])
+    }
+
+    fn file_attrs(&self) -> u32 {
+        LittleEndian::read_u32(&self.buf[21..])
     }
 }
 
@@ -136,5 +181,47 @@ mod tests {
         let buf = prefix_buf();
         let (prefix, _) = FilePrefix::from_buf(&buf).unwrap();
         assert_eq!(prefix.creation_os(), Some(OperatingSystem::Windows));
+    }
+
+    #[test]
+    fn test_gets_file_crc32() {
+        let buf = prefix_buf();
+        let (prefix, _) = FilePrefix::from_buf(&buf).unwrap();
+        assert_eq!(prefix.file_crc32(), 2003897816);
+    }
+
+    #[test]
+    fn test_gets_raw_ftime() {
+        let buf = prefix_buf();
+        let (prefix, _) = FilePrefix::from_buf(&buf).unwrap();
+        assert_eq!(prefix.ftime_raw(), 1100909259);
+    }
+
+    #[test]
+    fn test_gets_unpack_version() {
+        let buf = prefix_buf();
+        let (prefix, _) = FilePrefix::from_buf(&buf).unwrap();
+        assert_eq!(prefix.unpack_version(), 29);
+    }
+
+    #[test]
+    fn test_gets_packing_method() {
+        let buf = prefix_buf();
+        let (prefix, _) = FilePrefix::from_buf(&buf).unwrap();
+        assert_eq!(prefix.packing_method(), Some(PackingMethod::Store));
+    }
+
+    #[test]
+    fn test_gets_name_size() {
+        let buf = prefix_buf();
+        let (prefix, _) = FilePrefix::from_buf(&buf).unwrap();
+        assert_eq!(prefix.name_size(), 57);
+    }
+
+    #[test]
+    fn test_gets_file_attrs() {
+        let buf = prefix_buf();
+        let (prefix, _) = FilePrefix::from_buf(&buf).unwrap();
+        assert_eq!(prefix.file_attrs(), 32);
     }
 }
