@@ -3,6 +3,7 @@ use crate::error::{Error, Result};
 use bitflags::bitflags;
 use byteorder::{ByteOrder, LittleEndian, ReadBytesExt};
 use num::FromPrimitive;
+use super::cursor::BufferCursor;
 
 #[derive(Debug, Copy, Clone, FromPrimitive, Eq, PartialEq)]
 enum OperatingSystem {
@@ -82,17 +83,29 @@ pub struct FilePrefix<'a> {
 
 impl<'a> FilePrefix<'a> {
     pub fn from_buf(buf: &'a [u8]) -> Result<(FilePrefix<'a>, &'a [u8])> {
-        let (prefix, prefix_rest) = BlockPrefix::from_buf(buf)?;
-        if prefix_rest.len() < 25 {
-            return Err(Error::buffer_too_small(buf.len() - prefix_rest.len() + 25));
-        }
-        Ok((
-            FilePrefix {
-                block_prefix: prefix,
-                buf: &prefix_rest[0..25],
-            },
-            &prefix_rest[25..],
-        ))
+        let mut cursor = BufferCursor::new(buf);
+        let fp = FilePrefix::from_cursor(&mut cursor)?;
+        Ok((fp, cursor.rest()))
+        // let (prefix, prefix_rest) = BlockPrefix::from_buf(buf)?;
+        // if prefix_rest.len() < 25 {
+        //     return Err(Error::buffer_too_small(buf.len() - prefix_rest.len() + 25));
+        // }
+        // Ok((
+        //     FilePrefix {
+        //         block_prefix: prefix,
+        //         buf: &prefix_rest[0..25],
+        //     },
+        //     &prefix_rest[25..],
+        // ))
+    }
+
+    pub fn from_cursor(cursor: &mut BufferCursor<'a>) -> Result<FilePrefix<'a>> {
+        let prefix = BlockPrefix::from_cursor(cursor)?;
+        let buf = cursor.read(25)?;
+        Ok(FilePrefix {
+            block_prefix: prefix,
+            buf: buf,
+        })
     }
 
     fn prefix(&self) -> BlockPrefix {
@@ -163,48 +176,39 @@ pub struct FileHeader<'a> {
 
 impl<'a> FileHeader<'a> {
     pub fn from_buf(buf: &'a [u8]) -> Result<(FileHeader<'a>, &'a [u8])> {
-        let (prefix, prefix_rest) = FilePrefix::from_buf(buf)?;
+        let mut cursor = BufferCursor::new(buf);
+        let fh = FileHeader::from_cursor(&mut cursor)?;
+        Ok((fh, cursor.rest()))
+    }
+
+    pub fn from_cursor(cursor: &mut BufferCursor<'a>) -> Result<FileHeader<'a>> {
+        let prefix = FilePrefix::from_cursor(cursor)?;
         let flags = prefix.flags();
 
-        let (high_size, high_rest) = if flags.contains(FileFlags::HighFields) {
-            if prefix_rest.len() < 8 {
-                return Err(Error::buffer_too_small(buf.len() - prefix_rest.len() + 8));
-            }
-            (Some(&prefix_rest[0..8]), &prefix_rest[8..])
+        let high_size = if flags.contains(FileFlags::HighFields) {
+            Some(cursor.read(8)?)
         } else {
-            (None, prefix_rest)
+            None
         };
 
-        let name_size = usize::from(prefix.name_size());
-        if high_rest.len() < name_size {
-            return Err(Error::buffer_too_small(
-                buf.len() - high_rest.len() + name_size,
-            ));
-        }
-        let name = &high_rest[0..name_size];
-        let name_rest = &high_rest[name_size..];
+        // let name_size = usize::from(prefix.name_size());
+        let name = cursor.read(usize::from(prefix.name_size()))?;
 
-        let (salt, salt_rest) = if flags.contains(FileFlags::Salted) {
-            if name_rest.len() < 8 {
-                return Err(Error::buffer_too_small(buf.len() - name_rest.len() + 8));
-            }
-            (Some(&name_rest[0..8]), &name_rest[8..])
+        let salt = if flags.contains(FileFlags::Salted) {
+            Some(cursor.read(8)?)
         } else {
-            (None, name_rest)
+            None
         };
 
         // TODO: ext_time
 
-        Ok((
-            FileHeader {
-                prefix: prefix,
-                high_size: high_size,
-                file_name: name,
-                salt: salt,
-                ext_time: None,
-            },
-            salt_rest,
-        ))
+        Ok(FileHeader {
+            prefix: prefix,
+            high_size: high_size,
+            file_name: name,
+            salt: salt,
+            ext_time: None,
+        })
     }
 }
 

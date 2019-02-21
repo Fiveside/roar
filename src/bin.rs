@@ -77,7 +77,7 @@ fn parse_marker(restbuf: &mut Vec<u8>, buf: &mut Vec<u8>, file: &mut impl Read) 
 }
 
 fn parse_archive(restbuf: &mut Vec<u8>, buf: &mut Vec<u8>, file: &mut impl Read) -> Result<()> {
-    let (arc, rest) = block::ArchiveHeader::from(buf)?;
+    let (arc, rest) = block::ArchiveHeader::from_buf(buf)?;
     println!("Archive: {:?}", arc);
     println!("Reserved 1: {:?}", arc.reserved1());
     println!("Reserved 2: {:?}", arc.reserved2());

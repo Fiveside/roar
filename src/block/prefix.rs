@@ -6,6 +6,7 @@ use crc::crc16::Hasher16;
 use failure::ResultExt;
 use num::FromPrimitive;
 use std::io;
+use super::cursor::BufferCursor;
 
 #[derive(Debug, Copy, Clone, FromPrimitive, Eq, PartialEq)]
 pub enum HeadType {
@@ -127,33 +128,43 @@ impl<'a> BlockPrefix<'a> {
     }
 
     pub fn from_buf(buf: &'a [u8]) -> Result<(BlockPrefix<'a>, &'a [u8])> {
-        if buf.len() < 7 {
-            return Err(Error::buffer_too_small(7));
-        }
-        // let flags = LittleEndian::read_u16(&buf[3..5]);
-
-        // let has_add_size = flags & PrefixFlags::HAS_ADD_SIZE.bits() > 0;
-        // if has_add_size && buf.len() < 7 + 4 {
-        //     return Err(Error::buffer_too_small(7 + 4));
+        let mut cursor = BufferCursor::new(buf);
+        let bp = BlockPrefix::from_cursor(&mut cursor)?;
+        let rest = cursor.rest();
+        Ok((bp, rest))
+        // if buf.len() < 7 {
+        //     return Err(Error::buffer_too_small(7));
         // }
-        // let rest = if has_add_size {
-        //     &buf[(7 + 4)..]
-        // } else {
-        //     &buf[7..]
-        // };
-        // let add_size = if has_add_size {
-        //     Some(&buf[7..(7 + 4)])
-        // } else {
-        //     None
-        // };
+        // // let flags = LittleEndian::read_u16(&buf[3..5]);
 
-        Ok((
-            BlockPrefix {
-                main: &buf[0..7],
-                // add_size: add_size,
-            },
-            &buf[7..],
-        ))
+        // // let has_add_size = flags & PrefixFlags::HAS_ADD_SIZE.bits() > 0;
+        // // if has_add_size && buf.len() < 7 + 4 {
+        // //     return Err(Error::buffer_too_small(7 + 4));
+        // // }
+        // // let rest = if has_add_size {
+        // //     &buf[(7 + 4)..]
+        // // } else {
+        // //     &buf[7..]
+        // // };
+        // // let add_size = if has_add_size {
+        // //     Some(&buf[7..(7 + 4)])
+        // // } else {
+        // //     None
+        // // };
+
+        // Ok((
+        //     BlockPrefix {
+        //         main: &buf[0..7],
+        //         // add_size: add_size,
+        //     },
+        //     &buf[7..],
+        // ))
+    }
+
+    pub fn from_cursor(cursor: &mut BufferCursor<'a>) -> Result<BlockPrefix<'a>> {
+        Ok(BlockPrefix {
+            main: cursor.read(7)?
+        })
     }
 }
 
