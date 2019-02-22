@@ -1,16 +1,13 @@
 use crate::error::{Error, Result};
 
-pub struct BufferCursor <'a> {
+pub struct BufferCursor<'a> {
     buf: &'a [u8],
     pos: usize,
 }
 
 impl<'a> BufferCursor<'a> {
     pub fn new(buf: &'a [u8]) -> BufferCursor<'a> {
-        BufferCursor {
-            buf: buf,
-            pos: 0
-        }
+        BufferCursor { buf: buf, pos: 0 }
     }
 
     pub fn read(&mut self, num: usize) -> Result<&'a [u8]> {

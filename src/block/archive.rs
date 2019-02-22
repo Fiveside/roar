@@ -1,9 +1,9 @@
+use super::cursor::BufferCursor;
 use super::BlockPrefix;
-use crate::error::{Error, Result};
-use byteorder::{ByteOrder, LittleEndian, ReadBytesExt};
+use crate::error::Result;
+use byteorder::{ByteOrder, LittleEndian};
 use crc::crc16;
 use crc::crc16::Hasher16;
-use super::cursor::BufferCursor;
 
 #[derive(Debug, Clone, Copy)]
 pub struct ArchiveHeader<'a> {

@@ -1,3 +1,4 @@
+use super::cursor::BufferCursor;
 use crate::error::{Error, Result};
 use bitflags::bitflags;
 use byteorder::{ByteOrder, LittleEndian, ReadBytesExt};
@@ -6,7 +7,6 @@ use crc::crc16::Hasher16;
 use failure::ResultExt;
 use num::FromPrimitive;
 use std::io;
-use super::cursor::BufferCursor;
 
 #[derive(Debug, Copy, Clone, FromPrimitive, Eq, PartialEq)]
 pub enum HeadType {
@@ -163,7 +163,7 @@ impl<'a> BlockPrefix<'a> {
 
     pub fn from_cursor(cursor: &mut BufferCursor<'a>) -> Result<BlockPrefix<'a>> {
         Ok(BlockPrefix {
-            main: cursor.read(7)?
+            main: cursor.read(7)?,
         })
     }
 }

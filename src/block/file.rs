@@ -1,9 +1,9 @@
+use super::cursor::BufferCursor;
 use super::BlockPrefix;
 use crate::error::{Error, Result};
 use bitflags::bitflags;
 use byteorder::{ByteOrder, LittleEndian, ReadBytesExt};
 use num::FromPrimitive;
-use super::cursor::BufferCursor;
 
 #[derive(Debug, Copy, Clone, FromPrimitive, Eq, PartialEq)]
 enum OperatingSystem {
@@ -154,7 +154,10 @@ impl<'a> FilePrefix<'a> {
     }
 }
 
-fn parse_header_highsize<'a>(cursor: &mut BufferCursor<'a>, flags: &FileFlags) -> Result<Option<&'a [u8]>> {
+fn parse_header_highsize<'a>(
+    cursor: &mut BufferCursor<'a>,
+    flags: &FileFlags,
+) -> Result<Option<&'a [u8]>> {
     if flags.contains(FileFlags::HighFields) {
         Ok(Some(cursor.read(8)?))
     } else {
@@ -162,7 +165,10 @@ fn parse_header_highsize<'a>(cursor: &mut BufferCursor<'a>, flags: &FileFlags) -
     }
 }
 
-fn parse_header_salt<'a>(cursor: &mut BufferCursor<'a>, flags: &FileFlags) -> Result<Option<&'a [u8]>> {
+fn parse_header_salt<'a>(
+    cursor: &mut BufferCursor<'a>,
+    flags: &FileFlags,
+) -> Result<Option<&'a [u8]>> {
     if flags.contains(FileFlags::Salted) {
         Ok(Some(cursor.read(8)?))
     } else {
@@ -303,15 +309,23 @@ mod tests {
         let buf = vec![];
         let mut cursor = BufferCursor::new(&buf);
         let flags = FileFlags::Always;
-        assert!(parse_header_highsize(&mut cursor, &flags).unwrap().is_none());
+        assert!(parse_header_highsize(&mut cursor, &flags)
+            .unwrap()
+            .is_none());
     }
 
     #[test]
     fn test_parse_header_highsize_returns_8_bytes_when_flagged() {
-        let buf = vec![1,2,3,4,5,6,7,8];
+        let buf = vec![1, 2, 3, 4, 5, 6, 7, 8];
         let mut cursor = BufferCursor::new(&buf);
         let flags = FileFlags::Always | FileFlags::HighFields;
-        assert_eq!(parse_header_highsize(&mut cursor, &flags).unwrap().unwrap().len(), 8);
+        assert_eq!(
+            parse_header_highsize(&mut cursor, &flags)
+                .unwrap()
+                .unwrap()
+                .len(),
+            8
+        );
     }
 
     #[test]
@@ -322,11 +336,17 @@ mod tests {
         assert!(parse_header_salt(&mut cursor, &flags).unwrap().is_none());
     }
 
-        #[test]
+    #[test]
     fn test_parse_header_salt_returns_8_bytes_when_flagged() {
-        let buf = vec![1,2,3,4,5,6,7,8];
+        let buf = vec![1, 2, 3, 4, 5, 6, 7, 8];
         let mut cursor = BufferCursor::new(&buf);
         let flags = FileFlags::Always | FileFlags::Salted;
-        assert_eq!(parse_header_salt(&mut cursor, &flags).unwrap().unwrap().len(), 8);
+        assert_eq!(
+            parse_header_salt(&mut cursor, &flags)
+                .unwrap()
+                .unwrap()
+                .len(),
+            8
+        );
     }
 }
