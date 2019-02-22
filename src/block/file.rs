@@ -154,6 +154,22 @@ impl<'a> FilePrefix<'a> {
     }
 }
 
+fn parse_header_highsize<'a>(cursor: &mut BufferCursor<'a>, flags: &FileFlags) -> Result<Option<&'a [u8]>> {
+    if flags.contains(FileFlags::HighFields) {
+        Ok(Some(cursor.read(8)?))
+    } else {
+        Ok(None)
+    }
+}
+
+fn parse_header_salt<'a>(cursor: &mut BufferCursor<'a>, flags: &FileFlags) -> Result<Option<&'a [u8]>> {
+    if flags.contains(FileFlags::Salted) {
+        Ok(Some(cursor.read(8)?))
+    } else {
+        Ok(None)
+    }
+}
+
 #[derive(Debug, Copy, Clone)]
 pub struct FileHeader<'a> {
     prefix: FilePrefix<'a>,
@@ -184,21 +200,9 @@ impl<'a> FileHeader<'a> {
     pub fn from_cursor(cursor: &mut BufferCursor<'a>) -> Result<FileHeader<'a>> {
         let prefix = FilePrefix::from_cursor(cursor)?;
         let flags = prefix.flags();
-
-        let high_size = if flags.contains(FileFlags::HighFields) {
-            Some(cursor.read(8)?)
-        } else {
-            None
-        };
-
-        // let name_size = usize::from(prefix.name_size());
+        let high_size = parse_header_highsize(cursor, &flags)?;
         let name = cursor.read(usize::from(prefix.name_size()))?;
-
-        let salt = if flags.contains(FileFlags::Salted) {
-            Some(cursor.read(8)?)
-        } else {
-            None
-        };
+        let salt = parse_header_salt(cursor, &flags)?;
 
         // TODO: ext_time
 
@@ -292,5 +296,37 @@ mod tests {
         let (prefix, _) = FilePrefix::from_buf(&buf).unwrap();
         let expected = FileFlags::Dictionary3 | FileFlags::ExtTime | FileFlags::Always;
         assert_eq!(prefix.flags(), FileFlags::Dictionary3 | expected);
+    }
+
+    #[test]
+    fn test_parse_header_highsize_returns_nothing_when_unflagged() {
+        let buf = vec![];
+        let mut cursor = BufferCursor::new(&buf);
+        let flags = FileFlags::Always;
+        assert!(parse_header_highsize(&mut cursor, &flags).unwrap().is_none());
+    }
+
+    #[test]
+    fn test_parse_header_highsize_returns_8_bytes_when_flagged() {
+        let buf = vec![1,2,3,4,5,6,7,8];
+        let mut cursor = BufferCursor::new(&buf);
+        let flags = FileFlags::Always | FileFlags::HighFields;
+        assert_eq!(parse_header_highsize(&mut cursor, &flags).unwrap().unwrap().len(), 8);
+    }
+
+    #[test]
+    fn test_parse_header_salt_returns_nothing_when_unflagged() {
+        let buf = vec![];
+        let mut cursor = BufferCursor::new(&buf);
+        let flags = FileFlags::Always;
+        assert!(parse_header_salt(&mut cursor, &flags).unwrap().is_none());
+    }
+
+        #[test]
+    fn test_parse_header_salt_returns_8_bytes_when_flagged() {
+        let buf = vec![1,2,3,4,5,6,7,8];
+        let mut cursor = BufferCursor::new(&buf);
+        let flags = FileFlags::Always | FileFlags::Salted;
+        assert_eq!(parse_header_salt(&mut cursor, &flags).unwrap().unwrap().len(), 8);
     }
 }
