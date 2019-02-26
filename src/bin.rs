@@ -39,6 +39,9 @@ fn main() -> Result<()> {
         }
 
         let (block, rest) = blockres.unwrap();
+        println!("Block type: {:?}", block.block_type());
+        println!("Block flags: {:?}", block.flags());
+        println!("Block size: {:?}", block.size());
         println!("{:?}", rest);
 
         match block.block_type() {
@@ -66,6 +69,7 @@ fn main() -> Result<()> {
 
 fn parse_marker(restbuf: &mut Vec<u8>, buf: &mut Vec<u8>, file: &mut impl Read) -> Result<()> {
     let (blk, rest) = block::BlockPrefix::from_buf(buf)?;
+    println!("Parsing used {:?} bytes", buf.len() - rest.len());
     println!("{:?}", blk.crc());
     println!("{:?}", blk.block_type());
     println!("{:?}", blk.flags());
@@ -78,6 +82,7 @@ fn parse_marker(restbuf: &mut Vec<u8>, buf: &mut Vec<u8>, file: &mut impl Read) 
 
 fn parse_archive(restbuf: &mut Vec<u8>, buf: &mut Vec<u8>, file: &mut impl Read) -> Result<()> {
     let (arc, rest) = block::ArchiveHeader::from(buf)?;
+    println!("Parsing used {:?} bytes", buf.len() - rest.len());
     println!("Archive: {:?}", arc);
     println!("Reserved 1: {:?}", arc.reserved1());
     println!("Reserved 2: {:?}", arc.reserved2());
@@ -98,6 +103,7 @@ fn parse_archive(restbuf: &mut Vec<u8>, buf: &mut Vec<u8>, file: &mut impl Read)
 
 fn parse_file_header(restbuf: &mut Vec<u8>, buf: &mut Vec<u8>, file: &mut impl Read) -> Result<()> {
     let (arcfile, rest) = block::FileHeader::from_buf(buf)?;
+    println!("Parsing used {:?} bytes", buf.len() - rest.len());
     println!("Got a file header: {:?}", arcfile);
     // let (arcfile, rest) = block::FileHeader::from(buf)?;
 
