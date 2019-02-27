@@ -1,3 +1,4 @@
+use super::cursor::BufferCursor;
 use super::BlockPrefix;
 use crate::error::{Error, Result};
 use bitflags::bitflags;
@@ -82,17 +83,29 @@ pub struct FilePrefix<'a> {
 
 impl<'a> FilePrefix<'a> {
     pub fn from_buf(buf: &'a [u8]) -> Result<(FilePrefix<'a>, &'a [u8])> {
-        let (prefix, prefix_rest) = BlockPrefix::from_buf(buf)?;
-        if prefix_rest.len() < 25 {
-            return Err(Error::buffer_too_small(buf.len() - prefix_rest.len() + 25));
-        }
-        Ok((
-            FilePrefix {
-                block_prefix: prefix,
-                buf: &prefix_rest[0..25],
-            },
-            &prefix_rest[25..],
-        ))
+        let mut cursor = BufferCursor::new(buf);
+        let fp = FilePrefix::from_cursor(&mut cursor)?;
+        Ok((fp, cursor.rest()))
+        // let (prefix, prefix_rest) = BlockPrefix::from_buf(buf)?;
+        // if prefix_rest.len() < 25 {
+        //     return Err(Error::buffer_too_small(buf.len() - prefix_rest.len() + 25));
+        // }
+        // Ok((
+        //     FilePrefix {
+        //         block_prefix: prefix,
+        //         buf: &prefix_rest[0..25],
+        //     },
+        //     &prefix_rest[25..],
+        // ))
+    }
+
+    pub fn from_cursor(cursor: &mut BufferCursor<'a>) -> Result<FilePrefix<'a>> {
+        let prefix = BlockPrefix::from_cursor(cursor)?;
+        let buf = cursor.read(25)?;
+        Ok(FilePrefix {
+            block_prefix: prefix,
+            buf: buf,
+        })
     }
 
     fn prefix(&self) -> BlockPrefix {
@@ -141,6 +154,28 @@ impl<'a> FilePrefix<'a> {
     }
 }
 
+fn parse_header_highsize<'a>(
+    cursor: &mut BufferCursor<'a>,
+    flags: &FileFlags,
+) -> Result<Option<&'a [u8]>> {
+    if flags.contains(FileFlags::HighFields) {
+        Ok(Some(cursor.read(8)?))
+    } else {
+        Ok(None)
+    }
+}
+
+fn parse_header_salt<'a>(
+    cursor: &mut BufferCursor<'a>,
+    flags: &FileFlags,
+) -> Result<Option<&'a [u8]>> {
+    if flags.contains(FileFlags::Salted) {
+        Ok(Some(cursor.read(8)?))
+    } else {
+        Ok(None)
+    }
+}
+
 #[derive(Debug, Copy, Clone)]
 pub struct FileHeader<'a> {
     prefix: FilePrefix<'a>,
@@ -163,48 +198,27 @@ pub struct FileHeader<'a> {
 
 impl<'a> FileHeader<'a> {
     pub fn from_buf(buf: &'a [u8]) -> Result<(FileHeader<'a>, &'a [u8])> {
-        let (prefix, prefix_rest) = FilePrefix::from_buf(buf)?;
+        let mut cursor = BufferCursor::new(buf);
+        let fh = FileHeader::from_cursor(&mut cursor)?;
+        Ok((fh, cursor.rest()))
+    }
+
+    pub fn from_cursor(cursor: &mut BufferCursor<'a>) -> Result<FileHeader<'a>> {
+        let prefix = FilePrefix::from_cursor(cursor)?;
         let flags = prefix.flags();
-
-        let (high_size, high_rest) = if flags.contains(FileFlags::HighFields) {
-            if prefix_rest.len() < 8 {
-                return Err(Error::buffer_too_small(buf.len() - prefix_rest.len() + 8));
-            }
-            (Some(&prefix_rest[0..8]), &prefix_rest[8..])
-        } else {
-            (None, prefix_rest)
-        };
-
-        let name_size = usize::from(prefix.name_size());
-        if high_rest.len() < name_size {
-            return Err(Error::buffer_too_small(
-                buf.len() - high_rest.len() + name_size,
-            ));
-        }
-        let name = &high_rest[0..name_size];
-        let name_rest = &high_rest[name_size..];
-
-        let (salt, salt_rest) = if flags.contains(FileFlags::Salted) {
-            if name_rest.len() < 8 {
-                return Err(Error::buffer_too_small(buf.len() - name_rest.len() + 8));
-            }
-            (Some(&name_rest[0..8]), &name_rest[8..])
-        } else {
-            (None, name_rest)
-        };
+        let high_size = parse_header_highsize(cursor, &flags)?;
+        let name = cursor.read(usize::from(prefix.name_size()))?;
+        let salt = parse_header_salt(cursor, &flags)?;
 
         // TODO: ext_time
 
-        Ok((
-            FileHeader {
-                prefix: prefix,
-                high_size: high_size,
-                file_name: name,
-                salt: salt,
-                ext_time: None,
-            },
-            salt_rest,
-        ))
+        Ok(FileHeader {
+            prefix: prefix,
+            high_size: high_size,
+            file_name: name,
+            salt: salt,
+            ext_time: None,
+        })
     }
 }
 
@@ -288,5 +302,51 @@ mod tests {
         let (prefix, _) = FilePrefix::from_buf(&buf).unwrap();
         let expected = FileFlags::Dictionary3 | FileFlags::ExtTime | FileFlags::Always;
         assert_eq!(prefix.flags(), FileFlags::Dictionary3 | expected);
+    }
+
+    #[test]
+    fn test_parse_header_highsize_returns_nothing_when_unflagged() {
+        let buf = vec![];
+        let mut cursor = BufferCursor::new(&buf);
+        let flags = FileFlags::Always;
+        assert!(parse_header_highsize(&mut cursor, &flags)
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn test_parse_header_highsize_returns_8_bytes_when_flagged() {
+        let buf = vec![1, 2, 3, 4, 5, 6, 7, 8];
+        let mut cursor = BufferCursor::new(&buf);
+        let flags = FileFlags::Always | FileFlags::HighFields;
+        assert_eq!(
+            parse_header_highsize(&mut cursor, &flags)
+                .unwrap()
+                .unwrap()
+                .len(),
+            8
+        );
+    }
+
+    #[test]
+    fn test_parse_header_salt_returns_nothing_when_unflagged() {
+        let buf = vec![];
+        let mut cursor = BufferCursor::new(&buf);
+        let flags = FileFlags::Always;
+        assert!(parse_header_salt(&mut cursor, &flags).unwrap().is_none());
+    }
+
+    #[test]
+    fn test_parse_header_salt_returns_8_bytes_when_flagged() {
+        let buf = vec![1, 2, 3, 4, 5, 6, 7, 8];
+        let mut cursor = BufferCursor::new(&buf);
+        let flags = FileFlags::Always | FileFlags::Salted;
+        assert_eq!(
+            parse_header_salt(&mut cursor, &flags)
+                .unwrap()
+                .unwrap()
+                .len(),
+            8
+        );
     }
 }

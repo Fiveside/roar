@@ -1,6 +1,7 @@
+use super::cursor::BufferCursor;
 use super::BlockPrefix;
-use crate::error::{Error, Result};
-use byteorder::{ByteOrder, LittleEndian, ReadBytesExt};
+use crate::error::Result;
+use byteorder::{ByteOrder, LittleEndian};
 use crc::crc16;
 use crc::crc16::Hasher16;
 
@@ -15,20 +16,18 @@ pub struct ArchiveHeader<'a> {
 }
 
 impl<'a> ArchiveHeader<'a> {
-    pub fn from(buf: &'a [u8]) -> Result<(ArchiveHeader<'a>, &'a [u8])> {
-        let (prefix, prefix_rest) = BlockPrefix::from_buf(buf)?;
-        if prefix_rest.len() < 6 {
-            return Err(Error::buffer_too_small(buf.len() - prefix_rest.len() + 6));
-        }
-        let rest = &prefix_rest[6..];
+    pub fn from_buf(buf: &'a [u8]) -> Result<(ArchiveHeader<'a>, &'a [u8])> {
+        let mut cursor = BufferCursor::new(buf);
+        let ah = ArchiveHeader::from_cursor(&mut cursor)?;
+        Ok((ah, cursor.rest()))
+    }
 
-        return Ok((
-            ArchiveHeader {
-                prefix: prefix,
-                buf: &prefix_rest[0..6],
-            },
-            rest,
-        ));
+    pub fn from_cursor(cursor: &mut BufferCursor<'a>) -> Result<ArchiveHeader<'a>> {
+        let prefix = BlockPrefix::from_cursor(cursor)?;
+        Ok(ArchiveHeader {
+            prefix: prefix,
+            buf: cursor.read(6)?,
+        })
     }
 
     pub fn prefix(&self) -> BlockPrefix<'a> {
@@ -66,23 +65,23 @@ mod tests {
 
     #[test]
     fn test_archive_header_read_too_small() {
-        assert!(ArchiveHeader::from(&archive_header_prefix()).is_err());
+        assert!(ArchiveHeader::from_buf(&archive_header_prefix()).is_err());
     }
 
     #[test]
     fn test_archive_header_prefix_too_small() {
-        assert!(ArchiveHeader::from(&[]).is_err())
+        assert!(ArchiveHeader::from_buf(&[]).is_err())
     }
 
     #[test]
     fn test_archive_header_parses() {
-        assert!(ArchiveHeader::from(&archive_header()).is_ok());
+        assert!(ArchiveHeader::from_buf(&archive_header()).is_ok());
     }
 
     #[test]
     fn test_archive_header_reads_reserved() {
         let buf = archive_header();
-        let (head, _) = ArchiveHeader::from(&buf).unwrap();
+        let (head, _) = ArchiveHeader::from_buf(&buf).unwrap();
         assert_eq!(head.reserved1(), 1);
         assert_eq!(head.reserved2(), 2);
     }

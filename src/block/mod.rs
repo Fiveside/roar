@@ -1,4 +1,5 @@
 mod archive;
+mod cursor;
 mod file;
 mod prefix;
 
