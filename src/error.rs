@@ -21,6 +21,10 @@ impl Error {
     pub fn io(wrapped: ::std::io::Error) -> Error {
         Error::from(ErrorKind::Io(wrapped.to_string()))
     }
+
+    pub fn bad_block(reason: String) -> Error {
+        Error::from(ErrorKind::BadBlock(reason))
+    }
 }
 
 impl Fail for Error {
@@ -46,6 +50,9 @@ pub enum ErrorKind {
 
     // Wrapped io error
     Io(String),
+
+    // Invalid block (corrupt archive?)
+    BadBlock(String),
 }
 
 impl fmt::Display for ErrorKind {
@@ -57,6 +64,11 @@ impl fmt::Display for ErrorKind {
                 size
             ),
             ErrorKind::Io(ref msg) => write!(f, "I/O error: {}", msg),
+            ErrorKind::BadBlock(ref msg) => write!(
+                f,
+                "Block Decoding error: {} (perhaps the archive is corrupt)",
+                msg
+            ),
         }
     }
 }

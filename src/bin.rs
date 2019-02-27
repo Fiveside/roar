@@ -1,20 +1,24 @@
+#![feature(await_macro, async_await, futures_api)]
+
 #[macro_use]
 extern crate num_derive;
 extern crate num_traits;
 
+#[macro_use]
+extern crate tokio;
+
 mod block;
 mod error;
 
-use clap::{crate_authors, crate_description, crate_name, crate_version, App, Arg};
+use clap::{crate_authors, crate_description, crate_name, crate_version, App, Arg, ArgMatches};
 use crc::Hasher16;
 use error::{Error, Result};
 use std::fs;
 use std::io;
 use std::io::Read;
+use tokio::prelude::*;
 
 fn main() -> Result<()> {
-    println!("Hello World!");
-
     let matches = App::new(crate_name!())
         .version(crate_version!())
         .author(crate_authors!())
@@ -22,6 +26,34 @@ fn main() -> Result<()> {
         .arg(Arg::with_name("file").required(true))
         .get_matches();
 
+    run_sync(&matches)?;
+
+    // dude why
+    let fuckoff = matches.value_of("file").unwrap().to_owned();
+    ::tokio::run_async(
+        async move {
+            await!(run_async(fuckoff)).unwrap();
+        },
+    );
+
+    Ok(())
+}
+
+async fn run_async(filename: String) -> Result<()> {
+    let mut file = await!(tokio::fs::File::open(filename)).map_err(Error::io)?;
+
+    let mut buf = Vec::<u8>::new();
+    buf.resize(7, 0);
+
+    await!(tokio::io::read_exact(&mut file, &mut buf)).map_err(Error::io)?;
+    let (block, rest) = block::BlockPrefix::from_buf(&buf)?;
+    println!("Block type: {:?}", block.block_type());
+    println!("Rest: {:?}", rest);
+
+    Ok(())
+}
+
+fn run_sync(matches: &ArgMatches) -> Result<()> {
     let filename = matches.value_of("file").unwrap();
     let mut file = io::BufReader::new(fs::File::open(filename).map_err(Error::io)?);
 
@@ -30,7 +62,8 @@ fn main() -> Result<()> {
     for _ in 0..3 {
         let mut buf = restbuf.clone();
         buf.resize(128, 0);
-        file.read_exact(&mut buf[restbuf.len()..]).ok();
+        file.read_exact(&mut buf[restbuf.len()..])
+            .map_err(Error::io)?;
 
         let blockres = block::BlockPrefix::from_buf(&buf);
         println!("{:?}", blockres);

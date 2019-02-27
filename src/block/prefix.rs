@@ -108,8 +108,12 @@ impl<'a> BlockPrefix<'a> {
         return digest;
     }
 
+    pub fn raw_block_type(&self) -> u8 {
+        self.main[2]
+    }
+
     pub fn block_type(&self) -> Option<HeadType> {
-        HeadType::from_u8(self.main[2])
+        HeadType::from_u8(self.raw_block_type())
     }
 
     pub fn flags(&self) -> u16 {
