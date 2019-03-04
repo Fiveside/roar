@@ -3,10 +3,8 @@ use crate::error::{Error, Result};
 use bitflags::bitflags;
 use byteorder::{ByteOrder, LittleEndian, ReadBytesExt};
 use crc::crc16;
-use crc::crc16::Hasher16;
-use failure::ResultExt;
 use num::FromPrimitive;
-use std::io;
+use std::hash::Hasher;
 
 #[derive(Debug, Copy, Clone, FromPrimitive, Eq, PartialEq)]
 pub enum HeadType {
@@ -169,6 +167,35 @@ impl<'a> BlockPrefix<'a> {
         Ok(BlockPrefix {
             main: cursor.read(7)?,
         })
+    }
+
+    pub fn as_owned(&self) -> Result<OwnedBlockPrefix> {
+        Ok(OwnedBlockPrefix {
+            expected_crc: self.crc(),
+            block_type: self.block_type().ok_or_else(|| {
+                Error::bad_block(format!("Unknown block type: {}", self.raw_block_type()))
+            })?,
+            flags: self.flags(),
+            size: self.size(),
+        })
+    }
+}
+
+#[derive(Clone)]
+pub struct OwnedBlockPrefix {
+    pub expected_crc: u16,
+    pub block_type: HeadType,
+    pub flags: u16,
+    pub size: u64,
+}
+
+impl ::std::fmt::Debug for OwnedBlockPrefix {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        write!(
+            f,
+            "OwnedBlockPrefix<expected_crc: {:?}, block_type: {:?}, flags: {:?}, size: {:?}>",
+            self.expected_crc, self.block_type, self.flags, self.size
+        )
     }
 }
 

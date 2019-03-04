@@ -11,6 +11,7 @@ pub use prefix::HeadType;
 use crate::error::{Error, Result};
 use tokio::io;
 
+#[derive(Debug)]
 pub enum Block {
     Marker,
     Archive(ArchiveHeader),
@@ -23,7 +24,7 @@ pub async fn read_block(f: &mut impl io::AsyncRead) -> Result<Block> {
     let (block, rest) = BlockPrefix::from_buf(&prefix_buf)?;
     Ok(match block.block_type() {
         Some(prefix::HeadType::MarkerBlock) => Block::Marker,
-        Some(HeadType::ArchiveHeader) => Block::Archive(ArchiveHeader::parse(&block, f)),
+        Some(HeadType::ArchiveHeader) => Block::Archive(await!(ArchiveHeader::parse(&block, f))?),
         Some(_) => unimplemented!(),
         None => {
             return Err(Error::bad_block(format!(
