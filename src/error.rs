@@ -22,13 +22,17 @@ impl Error {
         Error::from(ErrorKind::Io(wrapped.to_string()))
     }
 
+    pub fn aio(wrapped: ::async_std::io::Error) -> Error {
+        Error::from(ErrorKind::Aio(wrapped.to_string()))
+    }
+
     pub fn bad_block(reason: String) -> Error {
         Error::from(ErrorKind::BadBlock(reason))
     }
 }
 
 impl Fail for Error {
-    fn cause(&self) -> Option<&Fail> {
+    fn cause(&self) -> Option<&dyn Fail> {
         self.ctx.cause()
     }
 
@@ -51,6 +55,9 @@ pub enum ErrorKind {
     // Wrapped io error
     Io(String),
 
+    // Wrapped async io error
+    Aio(String),
+
     // Invalid block (corrupt archive?)
     BadBlock(String),
 }
@@ -64,6 +71,7 @@ impl fmt::Display for ErrorKind {
                 size
             ),
             ErrorKind::Io(ref msg) => write!(f, "I/O error: {}", msg),
+            ErrorKind::Aio(ref msg) => write!(f, "AIO error: {}", msg),
             ErrorKind::BadBlock(ref msg) => write!(
                 f,
                 "Block Decoding error: {} (perhaps the archive is corrupt)",
@@ -82,5 +90,11 @@ impl From<ErrorKind> for Error {
 impl From<Context<ErrorKind>> for Error {
     fn from(ctx: Context<ErrorKind>) -> Error {
         Error { ctx }
+    }
+}
+
+impl From<::std::io::Error> for Error {
+    fn from(e: ::std::io::Error) -> Error {
+        Error::io(e)
     }
 }

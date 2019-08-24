@@ -5,6 +5,8 @@ use byteorder::{ByteOrder, LittleEndian, ReadBytesExt};
 use crc::crc16;
 use num::FromPrimitive;
 use std::hash::Hasher;
+use crate::block::cursor::AsyncCRC16Cursor;
+use futures::{AsyncRead, AsyncReadExt};
 
 #[derive(Debug, Copy, Clone, FromPrimitive, Eq, PartialEq)]
 pub enum HeadType {
@@ -79,6 +81,37 @@ bitflags! {
 //         })
 //     }
 // }
+
+#[derive(Debug, Copy, PartialEq)]
+pub struct BlockHeaderCommon {
+    header_crc: u16,
+    header_type: HeadType,
+    header_flags: u16,
+    header_size: u16,
+    additional_size: u32,
+    digest: crc::crc16::Digest,
+}
+
+impl BlockHeaderCommon {
+    pub async fn read_from_file<T: AsyncRead + Unpin>(f: T) -> Result<BlockHeaderCommon> {
+        // This seed is incorrect.
+        let mut cursor = AsyncCRC16Cursor::new(f, 0);
+        let header_crc = cursor.read_u16().await?;
+        let header_type = HeadType::from_u8(cursor.read_u8().await?).ok_or(Error::bad_block("Unknown block type".into()))?;
+        let header_flags = cursor.read_u16().await?;
+        let header_size = cursor.read_u16().await?;
+        let additional_size = cursor.read_u32().await?;
+        Ok(BlockHeaderCommon {
+            header_crc,
+            header_type,
+            header_flags,
+            header_size,
+            additional_size,
+            digest: cursor.digest,
+        })
+    }
+}
+
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct BlockPrefix<'a> {

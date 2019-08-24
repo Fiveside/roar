@@ -1,11 +1,12 @@
-use super::cursor::{AsyncCursor, BufferCursor};
+use super::cursor::{AsyncCursor, AsyncCRC16Cursor, BufferCursor};
 use super::prefix::{BlockPrefix, OwnedBlockPrefix};
 use crate::error::Result;
 use byteorder::{ByteOrder, LittleEndian};
 use crc::crc16;
 use crc::crc16::Hasher16;
 use std::hash::Hasher;
-use tokio::io;
+use futures::io::AsyncRead;
+use crate::traits::AsyncFile;
 
 struct BlockCRC {
     expected_crc: u16,
@@ -42,17 +43,16 @@ impl ArchiveHeader {
     // }
 
     pub async fn parse<'a>(
-        prefix: &'a BlockPrefix<'a>,
-        f: &'a mut impl io::AsyncRead,
+        prefix: BlockPrefix<'a>,
+        f: &'a mut impl AsyncFile,
     ) -> Result<ArchiveHeader> {
         // FIXME: this isn't right
-        let mut digest = prefix.crc_digest(0);
-        let mut cursor = AsyncCursor::new(f, &mut digest);
-        let reserved1 = await!(cursor.read_u16())?;
-        let reserved2 = await!(cursor.read_u32())?;
+        let mut cursor = AsyncCRC16Cursor::new(f, prefix.crc_digest(0));
+        let reserved1 = cursor.read_u16().await?;
+        let reserved2 = cursor.read_u32().await?;
         Ok(ArchiveHeader {
             prefix: prefix.as_owned()?,
-            block_crc: digest.sum16(),
+            block_crc: cursor.digest.sum16(),
             reserved1: reserved1,
             reserved2: reserved2,
         })
