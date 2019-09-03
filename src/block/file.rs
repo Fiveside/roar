@@ -1,5 +1,4 @@
 use super::cursor::BufferCursor;
-use super::BlockPrefix;
 use crate::error::{Error, Result};
 use bitflags::bitflags;
 use byteorder::{ByteOrder, LittleEndian, ReadBytesExt};
