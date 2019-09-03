@@ -1,29 +1,29 @@
-use super::cursor::{AsyncCursor, AsyncCRC16Cursor, BufferCursor};
-use super::prefix::{BlockPrefix, OwnedBlockPrefix};
+use super::cursor::{AsyncCRC16Cursor};
+use crate::block::prefix::BlockHeaderCommon;
 use crate::error::Result;
+use crate::traits::AsyncFile;
 use byteorder::{ByteOrder, LittleEndian};
 use crc::crc16;
 use crc::crc16::Hasher16;
-use std::hash::Hasher;
 use futures::io::AsyncRead;
-use crate::traits::AsyncFile;
+use std::hash::Hasher;
 
 struct BlockCRC {
     expected_crc: u16,
     actual_crc: u16,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct ArchiveHeader {
     // prefix: BlockPrefix<'a>,
-    prefix: OwnedBlockPrefix,
-    block_crc: u16,
+    pub prefix: BlockHeaderCommon,
+    pub block_crc: u16,
 
     // Probably HighPosAv
-    reserved1: u16,
+    pub reserved1: u16,
 
     // Probably PosAv
-    reserved2: u32,
+    pub reserved2: u32,
     // Optional (maybe?) 1 byte EncryptVer (not implemented right now)
 }
 
@@ -43,32 +43,22 @@ impl ArchiveHeader {
     // }
 
     pub async fn parse<'a>(
-        prefix: BlockPrefix<'a>,
+        prefix: BlockHeaderCommon,
         f: &'a mut impl AsyncFile,
     ) -> Result<ArchiveHeader> {
-        // FIXME: this isn't right
-        let mut cursor = AsyncCRC16Cursor::new(f, prefix.crc_digest(0));
+        // FIXME: the digest seed is incorrect.
+        let mut cursor = AsyncCRC16Cursor::new(f, prefix.digest.sum16());
+
         let reserved1 = cursor.read_u16().await?;
         let reserved2 = cursor.read_u32().await?;
         Ok(ArchiveHeader {
-            prefix: prefix.as_owned()?,
+            prefix: prefix,
             block_crc: cursor.digest.sum16(),
             reserved1: reserved1,
             reserved2: reserved2,
         })
     }
 
-    pub fn prefix(&self) -> &OwnedBlockPrefix {
-        &self.prefix
-    }
-
-    pub fn reserved1(&self) -> u16 {
-        self.reserved1
-    }
-
-    pub fn reserved2(&self) -> u32 {
-        self.reserved2
-    }
 }
 
 #[cfg(test)]

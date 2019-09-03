@@ -7,14 +7,14 @@ extern crate num;
 #[macro_use]
 extern crate num_derive;
 
-mod error;
 mod block;
+mod error;
 mod traits;
 
-use async_std::{io, fs, prelude::*};
-use futures::executor::block_on;
-use clap::{App, Arg, crate_authors, crate_description, crate_name, crate_version};
+use async_std::{fs, io, prelude::*};
+use clap::{crate_authors, crate_description, crate_name, crate_version, App, Arg};
 use error::{Error, Result};
+use futures::executor::block_on;
 use futures::io::BufReader;
 
 fn main() {
@@ -42,7 +42,7 @@ async fn run(filename: &str) -> Result<()> {
     match block::read_block(&mut file).await? {
         block::Block::Marker => println!("Found marker block!"),
         block::Block::Archive(ref x) => println!("Found archive header: {:?}", x),
-        x => println!("unimplemented: {:?}", x)
+        x => println!("unimplemented: {:?}", x),
     }
     Ok(())
 }

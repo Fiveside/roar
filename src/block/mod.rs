@@ -1,16 +1,16 @@
 mod archive;
 mod cursor;
-mod file;
+//mod file;
 mod prefix;
 
 pub use archive::ArchiveHeader;
-pub use file::FileHeader;
-pub use prefix::BlockPrefix;
+//pub use file::FileHeader;
+pub use prefix::BlockHeaderCommon;
 pub use prefix::HeadType;
 
 use crate::error::{Error, Result};
-use futures::io::{AsyncReadExt, AsyncRead};
 use crate::traits::AsyncFile;
+use futures::io::{AsyncRead, AsyncReadExt};
 
 #[derive(Debug)]
 pub enum Block {
@@ -18,25 +18,21 @@ pub enum Block {
     Archive(ArchiveHeader),
 }
 
+pub async fn read_block<T: AsyncFile>(f: &mut T) -> Result<Block> {
+    //    let mut prefix_buf = ::std::mem::MaybeUninit::<[u8; 7]>::uninit();
+    //    unsafe {
+    //        io::read_exact(f, prefix_buf.as_mut_ptr()).await?;
+    //    }
+    //    let prefix_buf = unsafe { prefis_buf.assume_init() };
+    let block = BlockHeaderCommon::read_from_file(f).await?;
 
-pub async fn read_block(f: &mut impl AsyncFile) -> Result<Block> {
-//    let mut prefix_buf = ::std::mem::MaybeUninit::<[u8; 7]>::uninit();
-//    unsafe {
-//        io::read_exact(f, prefix_buf.as_mut_ptr()).await?;
-//    }
-//    let prefix_buf = unsafe { prefis_buf.assume_init() };
-    let mut prefix_buf = [0; 7];
-    f.read_exact(&mut prefix_buf).await?;
-    let (block, rest) = BlockPrefix::from_buf(&prefix_buf)?;
-
-    Ok(match block.block_type() {
-        Some(prefix::HeadType::MarkerBlock) => Block::Marker,
-        Some(HeadType::ArchiveHeader) => Block::Archive(ArchiveHeader::parse(block, f).await?),
-        Some(_) => unimplemented!(),
-        None => {
+    Ok(match block.header_type {
+        HeadType::MarkerBlock => Block::Marker,
+        HeadType::ArchiveHeader => Block::Archive(ArchiveHeader::parse(block, f).await?),
+        _ => {
             return Err(Error::bad_block(format!(
-                "Unknown block marker: {}",
-                block.raw_block_type()
+                "Unknown block marker: {:?}",
+                block.header_type
             )))
         }
     })

@@ -1,12 +1,14 @@
 use super::cursor::BufferCursor;
+use crate::block::cursor::AsyncCRC16Cursor;
 use crate::error::{Error, Result};
 use bitflags::bitflags;
 use byteorder::{ByteOrder, LittleEndian, ReadBytesExt};
 use crc::crc16;
+use crc::crc16::Hasher16;
+use futures::{AsyncRead, AsyncReadExt};
 use num::FromPrimitive;
 use std::hash::Hasher;
-use crate::block::cursor::AsyncCRC16Cursor;
-use futures::{AsyncRead, AsyncReadExt};
+use futures::prelude::*;
 
 #[derive(Debug, Copy, Clone, FromPrimitive, Eq, PartialEq)]
 pub enum HeadType {
@@ -82,14 +84,28 @@ bitflags! {
 //     }
 // }
 
-#[derive(Debug, Copy, PartialEq)]
+
 pub struct BlockHeaderCommon {
-    header_crc: u16,
-    header_type: HeadType,
-    header_flags: u16,
+    expected_header_crc: u16,
+    pub header_type: HeadType,
+    header_flags: PrefixFlags,
     header_size: u16,
     additional_size: u32,
-    digest: crc::crc16::Digest,
+    pub digest: crc::crc16::Digest,
+}
+
+impl ::std::fmt::Debug for BlockHeaderCommon {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        write!(
+            f,
+            "BlockHeaderCommon{{ expected_crc: {:?}, header_type: {:?}, header_flags: {:?}, reported_block_size: {:?}, computed_crc16: {:?} }}",
+            self.expected_header_crc,
+            self.header_type,
+            self.header_flags,
+            self.block_size(),
+            self.digest.sum16()
+        )
+    }
 }
 
 impl BlockHeaderCommon {
@@ -97,12 +113,21 @@ impl BlockHeaderCommon {
         // This seed is incorrect.
         let mut cursor = AsyncCRC16Cursor::new(f, 0);
         let header_crc = cursor.read_u16().await?;
-        let header_type = HeadType::from_u8(cursor.read_u8().await?).ok_or(Error::bad_block("Unknown block type".into()))?;
-        let header_flags = cursor.read_u16().await?;
+
+        let header_type = HeadType::from_u8(cursor.read_u8().await?)
+            .ok_or(Error::bad_block("Unknown block type".into()))?;
+
+        let header_flags = PrefixFlags::from_bits_truncate(cursor.read_u16().await?);
         let header_size = cursor.read_u16().await?;
-        let additional_size = cursor.read_u32().await?;
+
+        let additional_size = if header_flags.contains(PrefixFlags::HAS_ADD_SIZE) {
+            cursor.read_u32().await?
+        } else {
+            0
+        };
+
         Ok(BlockHeaderCommon {
-            header_crc,
+            expected_header_crc: header_crc,
             header_type,
             header_flags,
             header_size,
@@ -110,141 +135,148 @@ impl BlockHeaderCommon {
             digest: cursor.digest,
         })
     }
-}
 
-
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
-pub struct BlockPrefix<'a> {
-    // FIELD BYTES
-    // HEAD_CRC 2
-    // HEAD_TYPE 1
-    // HEAD_FLAGS 2
-    // HEAD_SIZE 2
-    // ADD_SIZE 4 (optional)
-    main: &'a [u8],
-    // add_size: Option<&'a [u8]>,
-}
-
-impl<'a> BlockPrefix<'a> {
-    pub fn crc(&self) -> u16 {
-        LittleEndian::read_u16(&self.main[0..2])
-    }
-
-    pub fn crc_digest(&self, seed: u16) -> crc16::Digest {
-        // panic!("this method is broken still.");
-        let mut digest = crc::crc16::Digest::new(seed);
-        digest.write(&self.main[2..]);
-        // if let Some(ref x) = self.add_size {
-        //     digest.write(x);
-        // }
-        return digest;
-    }
-
-    pub fn raw_block_type(&self) -> u8 {
-        self.main[2]
-    }
-
-    pub fn block_type(&self) -> Option<HeadType> {
-        HeadType::from_u8(self.raw_block_type())
-    }
-
-    pub fn flags(&self) -> u16 {
-        LittleEndian::read_u16(&self.main[3..5])
-    }
-
-    pub fn size(&self) -> u64 {
-        // let add_size = self
-        //     .add_size
-        //     .map(|x| LittleEndian::read_u32(x))
-        //     .unwrap_or(0);
-        // let size = LittleEndian::read_u16(&self.main[5..7]);
-        // u64::from(size) + u64::from(add_size)
-        u64::from(LittleEndian::read_u16(&self.main[5..7]))
-    }
-
-    pub fn from_buf(buf: &'a [u8]) -> Result<(BlockPrefix<'a>, &'a [u8])> {
-        let mut cursor = BufferCursor::new(buf);
-        let bp = BlockPrefix::from_cursor(&mut cursor)?;
-        let rest = cursor.rest();
-        Ok((bp, rest))
-        // if buf.len() < 7 {
-        //     return Err(Error::buffer_too_small(7));
-        // }
-        // // let flags = LittleEndian::read_u16(&buf[3..5]);
-
-        // // let has_add_size = flags & PrefixFlags::HAS_ADD_SIZE.bits() > 0;
-        // // if has_add_size && buf.len() < 7 + 4 {
-        // //     return Err(Error::buffer_too_small(7 + 4));
-        // // }
-        // // let rest = if has_add_size {
-        // //     &buf[(7 + 4)..]
-        // // } else {
-        // //     &buf[7..]
-        // // };
-        // // let add_size = if has_add_size {
-        // //     Some(&buf[7..(7 + 4)])
-        // // } else {
-        // //     None
-        // // };
-
-        // Ok((
-        //     BlockPrefix {
-        //         main: &buf[0..7],
-        //         // add_size: add_size,
-        //     },
-        //     &buf[7..],
-        // ))
-    }
-
-    pub fn from_cursor(cursor: &mut BufferCursor<'a>) -> Result<BlockPrefix<'a>> {
-        Ok(BlockPrefix {
-            main: cursor.read(7)?,
-        })
-    }
-
-    pub fn as_owned(&self) -> Result<OwnedBlockPrefix> {
-        Ok(OwnedBlockPrefix {
-            expected_crc: self.crc(),
-            block_type: self.block_type().ok_or_else(|| {
-                Error::bad_block(format!("Unknown block type: {}", self.raw_block_type()))
-            })?,
-            flags: self.flags(),
-            size: self.size(),
-        })
+    pub fn block_size(&self) -> u32 {
+        self.additional_size
+            .checked_add(self.header_size as u32)
+            .expect("Overflow calculating block size")
     }
 }
 
-#[derive(Clone)]
-pub struct OwnedBlockPrefix {
-    pub expected_crc: u16,
-    pub block_type: HeadType,
-    pub flags: u16,
-    pub size: u64,
-}
-
-impl ::std::fmt::Debug for OwnedBlockPrefix {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        write!(
-            f,
-            "OwnedBlockPrefix<expected_crc: {:?}, block_type: {:?}, flags: {:?}, size: {:?}>",
-            self.expected_crc, self.block_type, self.flags, self.size
-        )
-    }
-}
+//#[derive(Debug, Clone, Copy, PartialEq, Default)]
+//pub struct BlockPrefix<'a> {
+//    // FIELD BYTES
+//    // HEAD_CRC 2
+//    // HEAD_TYPE 1
+//    // HEAD_FLAGS 2
+//    // HEAD_SIZE 2
+//    // ADD_SIZE 4 (optional)
+//    main: &'a [u8],
+//    // add_size: Option<&'a [u8]>,
+//}
+//
+//impl<'a> BlockPrefix<'a> {
+//    pub fn crc(&self) -> u16 {
+//        LittleEndian::read_u16(&self.main[0..2])
+//    }
+//
+//    pub fn crc_digest(&self, seed: u16) -> crc16::Digest {
+//        // panic!("this method is broken still.");
+//        let mut digest = crc::crc16::Digest::new(seed);
+//        digest.write(&self.main[2..]);
+//        // if let Some(ref x) = self.add_size {
+//        //     digest.write(x);
+//        // }
+//        return digest;
+//    }
+//
+//    pub fn raw_block_type(&self) -> u8 {
+//        self.main[2]
+//    }
+//
+//    pub fn block_type(&self) -> Option<HeadType> {
+//        HeadType::from_u8(self.raw_block_type())
+//    }
+//
+//    pub fn flags(&self) -> u16 {
+//        LittleEndian::read_u16(&self.main[3..5])
+//    }
+//
+//    pub fn size(&self) -> u64 {
+//        // let add_size = self
+//        //     .add_size
+//        //     .map(|x| LittleEndian::read_u32(x))
+//        //     .unwrap_or(0);
+//        // let size = LittleEndian::read_u16(&self.main[5..7]);
+//        // u64::from(size) + u64::from(add_size)
+//        u64::from(LittleEndian::read_u16(&self.main[5..7]))
+//    }
+//
+//    pub fn from_buf(buf: &'a [u8]) -> Result<(BlockPrefix<'a>, &'a [u8])> {
+//        let mut cursor = BufferCursor::new(buf);
+//        let bp = BlockPrefix::from_cursor(&mut cursor)?;
+//        let rest = cursor.rest();
+//        Ok((bp, rest))
+//        // if buf.len() < 7 {
+//        //     return Err(Error::buffer_too_small(7));
+//        // }
+//        // // let flags = LittleEndian::read_u16(&buf[3..5]);
+//
+//        // // let has_add_size = flags & PrefixFlags::HAS_ADD_SIZE.bits() > 0;
+//        // // if has_add_size && buf.len() < 7 + 4 {
+//        // //     return Err(Error::buffer_too_small(7 + 4));
+//        // // }
+//        // // let rest = if has_add_size {
+//        // //     &buf[(7 + 4)..]
+//        // // } else {
+//        // //     &buf[7..]
+//        // // };
+//        // // let add_size = if has_add_size {
+//        // //     Some(&buf[7..(7 + 4)])
+//        // // } else {
+//        // //     None
+//        // // };
+//
+//        // Ok((
+//        //     BlockPrefix {
+//        //         main: &buf[0..7],
+//        //         // add_size: add_size,
+//        //     },
+//        //     &buf[7..],
+//        // ))
+//    }
+//
+//    pub fn from_cursor(cursor: &mut BufferCursor<'a>) -> Result<BlockPrefix<'a>> {
+//        Ok(BlockPrefix {
+//            main: cursor.read(7)?,
+//        })
+//    }
+//
+//    pub fn as_owned(&self) -> Result<OwnedBlockPrefix> {
+//        Ok(OwnedBlockPrefix {
+//            expected_crc: self.crc(),
+//            block_type: self.block_type().ok_or_else(|| {
+//                Error::bad_block(format!("Unknown block type: {}", self.raw_block_type()))
+//            })?,
+//            flags: self.flags(),
+//            size: self.size(),
+//        })
+//    }
+//}
+//
+//#[derive(Clone)]
+//pub struct OwnedBlockPrefix {
+//    pub expected_crc: u16,
+//    pub block_type: HeadType,
+//    pub flags: u16,
+//    pub size: u64,
+//}
+//
+//impl ::std::fmt::Debug for OwnedBlockPrefix {
+//    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+//        write!(
+//            f,
+//            "OwnedBlockPrefix<expected_crc: {:?}, block_type: {:?}, flags: {:?}, size: {:?}>",
+//            self.expected_crc, self.block_type, self.flags, self.size
+//        )
+//    }
+//}
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Cursor;
 
     fn magic_block_prefix() -> Vec<u8> {
         vec![0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x00]
     }
 
-    #[test]
-    fn test_block_prefix_read_errors_with_not_enough_data() {
-        let res = BlockPrefix::from_buf(&[0]);
-        assert!(res.is_err());
-    }
+//    #[test]
+//    fn test_block_prefix_read_errors_with_not_enough_data() {
+//        BlockHeaderCommon::read_from_file(Cursor::new(magic_block_prefix()))
+//        let res = BlockPrefix::from_buf(&[0]);
+//        assert!(res.is_err());
+//    }
 
     // #[test]
     // fn test_block_prefix_read_errors_with_not_enough_data_from_add_data() {
