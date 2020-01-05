@@ -1,7 +1,6 @@
-use super::cursor::{AsyncCRC16Cursor};
+use super::cursor::AsyncCRC16Cursor;
 use crate::block::prefix::BlockHeaderCommon;
 use crate::error::Result;
-use crate::traits::AsyncFile;
 use byteorder::{ByteOrder, LittleEndian};
 use crc::crc16;
 use crc::crc16::Hasher16;
@@ -44,7 +43,7 @@ impl ArchiveHeader {
 
     pub async fn parse<'a>(
         prefix: BlockHeaderCommon,
-        f: &'a mut impl AsyncFile,
+        f: &'a mut impl AsyncRead,
     ) -> Result<ArchiveHeader> {
         // FIXME: the digest seed is incorrect.
         let mut cursor = AsyncCRC16Cursor::new(f, prefix.digest.sum16());
@@ -58,7 +57,6 @@ impl ArchiveHeader {
             reserved2: reserved2,
         })
     }
-
 }
 
 #[cfg(test)]

@@ -4,32 +4,32 @@ version = "0.1.0"
 authors = ["Erich Healy <ErichRHealy@gmail.com>"]
 edition = "2018"
 
-[lib]
-name = "roar"
-path = "src/lib.rs"
+# [lib]
+# name = "roar"
+# path = "src/lib.rs"
 
 [[bin]]
 name = "roar"
 path = "src/bin.rs"
 
 [dependencies]
-futures-preview = { version = "0.3.0-alpha.18", features = ["async-await", "nightly" ]}
-async-std = "0.99"
+# futures-preview = { version = "0.3.0-alpha.18", features = ["async-await", "nightly" ]}
 clap = "2.33"
-failure = "*"
-byteorder = "1"
+# failure = "*"
 crc = "1"
 bitflags = "*"
 num = "0.2"
 num-derive = "0.2"
 num-traits = "0.2"
 
-#clap = "2.32"
-#num = "0.2"
-#num-derive = "*"
-#num-traits = "*"
-#byteorder = "1"
-#bitflags = "*"
-#failure = "*"
-#crc = "1"
-#tokio = { version = "0.1.15", features = ["async-await-preview"] }
+
+pin-utils = "0.1.0-alpha.4"
+
+
+
+# New libs here
+thiserror  = "1.0"
+futures = "0.3"
+async-std = "1.4"
+async-trait = "0.1.22"
+byteorder = "1"

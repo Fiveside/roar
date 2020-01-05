@@ -5,10 +5,10 @@ use bitflags::bitflags;
 use byteorder::{ByteOrder, LittleEndian, ReadBytesExt};
 use crc::crc16;
 use crc::crc16::Hasher16;
+use futures::prelude::*;
 use futures::{AsyncRead, AsyncReadExt};
 use num::FromPrimitive;
 use std::hash::Hasher;
-use futures::prelude::*;
 
 #[derive(Debug, Copy, Clone, FromPrimitive, Eq, PartialEq)]
 pub enum HeadType {
@@ -84,7 +84,6 @@ bitflags! {
 //     }
 // }
 
-
 pub struct BlockHeaderCommon {
     expected_header_crc: u16,
     pub header_type: HeadType,
@@ -109,7 +108,7 @@ impl ::std::fmt::Debug for BlockHeaderCommon {
 }
 
 impl BlockHeaderCommon {
-    pub async fn read_from_file<T: AsyncRead + Unpin>(f: T) -> Result<BlockHeaderCommon> {
+    pub async fn read_from_file<T: AsyncRead>(f: T) -> Result<BlockHeaderCommon> {
         // This seed is incorrect.
         let mut cursor = AsyncCRC16Cursor::new(f, 0);
         let header_crc = cursor.read_u16().await?;
@@ -271,12 +270,12 @@ mod tests {
         vec![0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x00]
     }
 
-//    #[test]
-//    fn test_block_prefix_read_errors_with_not_enough_data() {
-//        BlockHeaderCommon::read_from_file(Cursor::new(magic_block_prefix()))
-//        let res = BlockPrefix::from_buf(&[0]);
-//        assert!(res.is_err());
-//    }
+    //    #[test]
+    //    fn test_block_prefix_read_errors_with_not_enough_data() {
+    //        BlockHeaderCommon::read_from_file(Cursor::new(magic_block_prefix()))
+    //        let res = BlockPrefix::from_buf(&[0]);
+    //        assert!(res.is_err());
+    //    }
 
     // #[test]
     // fn test_block_prefix_read_errors_with_not_enough_data_from_add_data() {

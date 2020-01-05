@@ -1,100 +1,113 @@
-use failure::{Backtrace, Context, Fail};
-use std::fmt;
+use thiserror::Error;
 
-// Type alias for handling errors through this crate.
-pub type Result<T> = ::std::result::Result<T, Error>;
+#[derive(Error, Debug)]
+pub enum RoarError {
+    #[error("Unknown")]
+    Unknown,
 
-#[derive(Debug)]
-pub struct Error {
-    ctx: Context<ErrorKind>,
+    #[error("IO Error")]
+    IO(#[from] std::io::Error),
 }
 
-impl Error {
-    pub fn kind(&self) -> &ErrorKind {
-        self.ctx.get_context()
-    }
+pub type Result<T> = ::std::result::Result<T, RoarError>;
 
-    pub fn buffer_too_small(required: usize) -> Error {
-        Error::from(ErrorKind::BufferTooSmall(required))
-    }
+// use failure::{Backtrace, Context, Fail};
+// use std::fmt;
 
-    pub fn io(wrapped: ::std::io::Error) -> Error {
-        Error::from(ErrorKind::Io(wrapped.to_string()))
-    }
+// // Type alias for handling errors through this crate.
+// pub type Result<T> = ::std::result::Result<T, Error>;
 
-    pub fn aio(wrapped: ::async_std::io::Error) -> Error {
-        Error::from(ErrorKind::Aio(wrapped.to_string()))
-    }
+// #[derive(Debug)]
+// pub struct Error {
+//     ctx: Context<ErrorKind>,
+// }
 
-    pub fn bad_block(reason: String) -> Error {
-        Error::from(ErrorKind::BadBlock(reason))
-    }
-}
+// impl Error {
+//     pub fn kind(&self) -> &ErrorKind {
+//         self.ctx.get_context()
+//     }
 
-impl Fail for Error {
-    fn cause(&self) -> Option<&dyn Fail> {
-        self.ctx.cause()
-    }
+//     pub fn buffer_too_small(required: usize) -> Error {
+//         Error::from(ErrorKind::BufferTooSmall(required))
+//     }
 
-    fn backtrace(&self) -> Option<&Backtrace> {
-        self.ctx.backtrace()
-    }
-}
+//     pub fn io(wrapped: ::std::io::Error) -> Error {
+//         Error::from(ErrorKind::Io(wrapped.to_string()))
+//     }
 
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.ctx.fmt(f)
-    }
-}
+//     pub fn aio(wrapped: ::async_std::io::Error) -> Error {
+//         Error::from(ErrorKind::Aio(wrapped.to_string()))
+//     }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub enum ErrorKind {
-    // Buffer size too small, contains required buffer size.
-    BufferTooSmall(usize),
+//     pub fn bad_block(reason: String) -> Error {
+//         Error::from(ErrorKind::BadBlock(reason))
+//     }
+// }
 
-    // Wrapped io error
-    Io(String),
+// impl Fail for Error {
+//     fn cause(&self) -> Option<&dyn Fail> {
+//         self.ctx.cause()
+//     }
 
-    // Wrapped async io error
-    Aio(String),
+//     fn backtrace(&self) -> Option<&Backtrace> {
+//         self.ctx.backtrace()
+//     }
+// }
 
-    // Invalid block (corrupt archive?)
-    BadBlock(String),
-}
+// impl fmt::Display for Error {
+//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+//         self.ctx.fmt(f)
+//     }
+// }
 
-impl fmt::Display for ErrorKind {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            ErrorKind::BufferTooSmall(ref size) => write!(
-                f,
-                "Buffer too small, require {} bytes before parsing will succeed",
-                size
-            ),
-            ErrorKind::Io(ref msg) => write!(f, "I/O error: {}", msg),
-            ErrorKind::Aio(ref msg) => write!(f, "AIO error: {}", msg),
-            ErrorKind::BadBlock(ref msg) => write!(
-                f,
-                "Block Decoding error: {} (perhaps the archive is corrupt)",
-                msg
-            ),
-        }
-    }
-}
+// #[derive(Debug, Clone, Eq, PartialEq)]
+// pub enum ErrorKind {
+//     // Buffer size too small, contains required buffer size.
+//     BufferTooSmall(usize),
 
-impl From<ErrorKind> for Error {
-    fn from(kind: ErrorKind) -> Error {
-        Error::from(Context::new(kind))
-    }
-}
+//     // Wrapped io error
+//     Io(String),
 
-impl From<Context<ErrorKind>> for Error {
-    fn from(ctx: Context<ErrorKind>) -> Error {
-        Error { ctx }
-    }
-}
+//     // Wrapped async io error
+//     Aio(String),
 
-impl From<::std::io::Error> for Error {
-    fn from(e: ::std::io::Error) -> Error {
-        Error::io(e)
-    }
-}
+//     // Invalid block (corrupt archive?)
+//     BadBlock(String),
+// }
+
+// impl fmt::Display for ErrorKind {
+//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+//         match *self {
+//             ErrorKind::BufferTooSmall(ref size) => write!(
+//                 f,
+//                 "Buffer too small, require {} bytes before parsing will succeed",
+//                 size
+//             ),
+//             ErrorKind::Io(ref msg) => write!(f, "I/O error: {}", msg),
+//             ErrorKind::Aio(ref msg) => write!(f, "AIO error: {}", msg),
+//             ErrorKind::BadBlock(ref msg) => write!(
+//                 f,
+//                 "Block Decoding error: {} (perhaps the archive is corrupt)",
+//                 msg
+//             ),
+//         }
+//     }
+// }
+
+// impl From<ErrorKind> for Error {
+//     fn from(kind: ErrorKind) -> Error {
+//         Error::from(Context::new(kind))
+//     }
+// }
+
+// impl From<Context<ErrorKind>> for Error {
+//     fn from(ctx: Context<ErrorKind>) -> Error {
+//         Error { ctx }
+//     }
+// }
+
+// impl From<::std::io::Error> for Error {
+//     fn from(e: ::std::io::Error) -> Error {
+//         Error::io(e)
+//     }
+// }

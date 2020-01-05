@@ -1,21 +1,20 @@
-#![feature(async_await)]
-#![feature(trait_alias)]
-#![feature(futures_api)]
+// extern crate num;
 
-extern crate num;
+// #[macro_use]
+// extern crate num_derive;
 
-#[macro_use]
-extern crate num_derive;
-
-mod block;
+// mod block;
 mod error;
-mod traits;
+// mod traits;
+mod io;
 
-use async_std::{fs, io, prelude::*};
+// use async_std::fs;
 use clap::{crate_authors, crate_description, crate_name, crate_version, App, Arg};
-use error::{Error, Result};
+use error::Result;
 use futures::executor::block_on;
-use futures::io::BufReader;
+// use futures::io::BufReader;
+use async_trait::async_trait;
+use futures::prelude::*;
 
 fn main() {
     let matches = App::new(crate_name!())
@@ -26,26 +25,54 @@ fn main() {
         .get_matches();
     let filename = matches.value_of("file").unwrap();
     if let Err(e) = block_on(run(filename)) {
-        use failure::Fail;
         eprintln!("An error ocurred: {}", e);
-        if let Some(bt) = e.backtrace() {
-            eprintln!("Backtrace: ");
-            eprintln!("{}", bt);
-        }
+        // use failure::Fail;
+        // if let Some(bt) = e.backtrace() {
+        //     eprintln!("Backtrace: ");
+        //     eprintln!("{}", bt);
+        // }
     }
 }
+
+// #[async_trait]
+// trait FileReader: std::marker::Unpin + std::marker::Send {
+//     async fn read_u16(&mut self) -> Result<u16>;
+// }
+
+// struct AsyncFileReaderImpl<T: AsyncRead + std::marker::Unpin + std::marker::Send> {
+//     f: T,
+// }
+
+// #[async_trait]
+// impl<T: AsyncRead + std::marker::Unpin + Send> FileReader for AsyncFileReaderImpl<T> {
+//     async fn read_u16(&mut self) -> Result<u16> {
+//         let mut buf: [u8; 2] = [0; 2];
+//         self.f.read_exact(&mut buf).await.unwrap();
+//         Ok(5)
+//     }
+// }
 
 async fn run(filename: &str) -> Result<()> {
-    println!("Attempting to open file {}", filename);
-    let mut file = BufReader::new(fs::File::open(filename).await?);
-
-    match block::read_block(&mut file).await? {
-        block::Block::Marker => println!("Found marker block!"),
-        block::Block::Archive(ref x) => println!("Found archive header: {:?}", x),
-        x => println!("unimplemented: {:?}", x),
-    }
+    let f = ::async_std::fs::File::open(filename).await.unwrap();
+    let bf = ::async_std::io::BufReader::new(f);
+    let fr = io::AsyncFileReader::new(bf);
+    let mut fl = io::FileReaderLease::new(fr);
+    let res = fl.read_u16(1244232323233).await?;
+    println!("OOOooooo {}", res);
     Ok(())
 }
+
+// async fn run(filename: &str) -> Result<()> {
+//     println!("Attempting to open file {}", filename);
+//     let mut file = BufReader::new(fs::File::open(filename).await?);
+
+//     match block::read_block(&mut file).await? {
+//         block::Block::Marker => println!("Found marker block!"),
+//         block::Block::Archive(ref x) => println!("Found archive header: {:?}", x),
+//         x => println!("unimplemented: {:?}", x),
+//     }
+//     Ok(())
+// }
 
 //#[macro_use]
 //extern crate num_derive;

@@ -32,18 +32,22 @@ impl<'a> BufferCursor<'a> {
     }
 }
 
-pub struct AsyncCRC16Cursor<T: AsyncRead + Unpin> {
+pub trait AsyncCRC16Cursor: ::std::pin::Unpin {
+    fn read_u8(&mut self) -> impl Future<Result<u8>>;
+}
+
+pub struct AsyncCRC16CursorImpl<T: AsyncRead> {
     pub file: T,
     pub digest: crc16::Digest,
 }
 
-impl<T: AsyncRead + Unpin> AsyncCRC16Cursor<T> {
-    pub fn new_with_digest(f: T, digest: crc::crc16::Digest) -> AsyncCRC16Cursor<T> {
-        AsyncCRC16Cursor { file: f, digest }
+impl<T: AsyncRead> AsyncCRC16CursorImpl<T> {
+    pub fn new_with_digest(f: T, digest: crc::crc16::Digest) -> AsyncCRC16CursorImpl<T> {
+        AsyncCRC16CursorImpl { file: f, digest }
     }
 
-    pub fn new(f: T, digest_seed: u16) -> AsyncCRC16Cursor<T> {
-        AsyncCRC16Cursor {
+    pub fn new(f: T, digest_seed: u16) -> AsyncCRC16CursorImpl<T> {
+        AsyncCRC16CursorImpl {
             file: f,
             digest: crc::crc16::Digest::new(digest_seed),
         }
@@ -51,8 +55,10 @@ impl<T: AsyncRead + Unpin> AsyncCRC16Cursor<T> {
 
     pub async fn read_u8(&mut self) -> Result<u8> {
         let mut buf = [0; 1];
-        async_std::io::Read::read_exact(&mut self.file, &mut buf).await?;
-//        self.file.read_exact(&mut buf).await?;
+        let raf = &self.file;
+        ::pin_utils::pin_mut!(raf);
+        async_std::io::Read::read_exact(raf, &mut buf).await?;
+        //        self.file.read_exact(&mut buf).await?;
         self.digest.write(&buf);
         Ok(buf[0])
     }
@@ -60,7 +66,7 @@ impl<T: AsyncRead + Unpin> AsyncCRC16Cursor<T> {
     pub async fn read_u16(&mut self) -> Result<u16> {
         let mut buf = [0; 2];
         async_std::io::Read::read_exact(&mut self.file, &mut buf).await?;
-//        self.file.read_exact(&mut buf).await?;
+        //        self.file.read_exact(&mut buf).await?;
         self.digest.write(&buf);
         Ok(LittleEndian::read_u16(&buf))
     }
@@ -68,7 +74,7 @@ impl<T: AsyncRead + Unpin> AsyncCRC16Cursor<T> {
     pub async fn read_u32(&mut self) -> Result<u32> {
         let mut buf = [0; 4];
         async_std::io::Read::read_exact(&mut self.file, &mut buf).await?;
-//        self.file.read_exact(&mut buf).await?;
+        //        self.file.read_exact(&mut buf).await?;
         self.digest.write(&buf);
         Ok(LittleEndian::read_u32(&buf))
     }

@@ -9,7 +9,6 @@ pub use prefix::BlockHeaderCommon;
 pub use prefix::HeadType;
 
 use crate::error::{Error, Result};
-use crate::traits::AsyncFile;
 use futures::io::{AsyncRead, AsyncReadExt};
 
 #[derive(Debug)]
@@ -18,7 +17,7 @@ pub enum Block {
     Archive(ArchiveHeader),
 }
 
-pub async fn read_block<T: AsyncFile>(f: &mut T) -> Result<Block> {
+pub async fn read_block<T: AsyncRead>(f: &mut T) -> Result<Block> {
     //    let mut prefix_buf = ::std::mem::MaybeUninit::<[u8; 7]>::uninit();
     //    unsafe {
     //        io::read_exact(f, prefix_buf.as_mut_ptr()).await?;

@@ -1,4 +1,3 @@
-use futures::io::AsyncRead;
-//use std::pin::Unpin;
+use futures::prelude::*;
 
-pub trait AsyncFile = AsyncRead + Unpin;
+pub trait AsyncFile = AsyncRead + AsyncSeek;
