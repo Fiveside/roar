@@ -1,11 +1,11 @@
 use crate::error::Result;
 use async_trait::async_trait;
 use byteorder::{ByteOrder, LittleEndian};
+use crc::crc16;
+use crc::crc16::Hasher16;
 use futures::io::{AsyncRead, AsyncReadExt, AsyncSeek, SeekFrom};
 use futures::AsyncSeekExt;
 use std::marker::Unpin;
-use crc::crc16;
-use crc::crc16::Hasher16;
 
 #[async_trait]
 pub trait FileReader: Unpin + Send {
@@ -78,11 +78,11 @@ impl<'a, T: FileReader> CRC16Reader<'a, T> {
     pub fn new(f: &'a mut T) -> Self {
         todo!("Hasher digest of 0 is not correct.  Figure out the correct one.");
         let hasher = crc::crc16::Digest::new(0);
-        CRC16Reader {f, _hasher: hasher}
+        CRC16Reader { f, _hasher: hasher }
     }
 
     pub fn resume(f: &'a mut T, hasher: crc16::Digest) -> Self {
-        CRC16Reader {f, _hasher: hasher}
+        CRC16Reader { f, _hasher: hasher }
     }
 
     pub fn hasher(self) -> crc16::Digest {

@@ -1,11 +1,11 @@
 use crate::block::prefix::BlockHeaderCommon;
 use crate::error::Result;
+use crate::io::{CRC16Reader, FileReader};
 use byteorder::{ByteOrder, LittleEndian};
 use crc::crc16;
 use crc::crc16::Hasher16;
 use futures::io::AsyncRead;
 use std::hash::Hasher;
-use crate::io::{CRC16Reader, FileReader};
 
 #[derive(Debug)]
 pub struct Marker {
@@ -15,7 +15,10 @@ pub struct Marker {
 
 impl Marker {
     pub async fn parse<T: FileReader>(f: CRC16Reader<'_, T>, prefix: BlockHeaderCommon) -> Self {
-        Marker { prefix, crc: f.hasher().sum16() }
+        Marker {
+            prefix,
+            crc: f.hasher().sum16(),
+        }
     }
 }
 
@@ -39,20 +42,6 @@ pub struct ArchiveHeader {
 }
 
 impl ArchiveHeader {
-    // pub fn from_buf(buf: &'a [u8]) -> Result<(ArchiveHeader<'a>, &'a [u8])> {
-    //     let mut cursor = BufferCursor::new(buf);
-    //     let ah = ArchiveHeader::from_cursor(&mut cursor)?;
-    //     Ok((ah, cursor.rest()))
-    // }
-
-    // pub fn from_cursor(cursor: &mut BufferCursor<'a>) -> Result<ArchiveHeader<'a>> {
-    //     let prefix = BlockPrefix::from_cursor(cursor)?;
-    //     Ok(ArchiveHeader {
-    //         prefix: prefix,
-    //         buf: cursor.read(6)?,
-    //     })
-    // }
-
     pub async fn parse<T: FileReader>(
         mut f: CRC16Reader<'_, T>,
         prefix: BlockHeaderCommon,
@@ -63,9 +52,9 @@ impl ArchiveHeader {
         let block_crc = f.hasher().sum16();
         Ok(ArchiveHeader {
             prefix,
-             block_crc,
-             reserved1,
-             reserved2,
+            block_crc,
+            reserved1,
+            reserved2,
         })
     }
 }

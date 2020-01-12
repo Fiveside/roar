@@ -1,5 +1,5 @@
 use crate::error::{Result, RoarError};
-use crate::io::{FileReader, CRC16Reader};
+use crate::io::{CRC16Reader, FileReader};
 use bitflags::bitflags;
 use byteorder::{ByteOrder, LittleEndian, ReadBytesExt};
 use crc::crc16;
@@ -7,8 +7,8 @@ use crc::crc16::Hasher16;
 use futures::prelude::*;
 use futures::{AsyncRead, AsyncReadExt};
 use num::FromPrimitive;
-use std::hash::Hasher;
 use num_derive::FromPrimitive;
+use std::hash::Hasher;
 
 #[derive(Debug, Copy, Clone, FromPrimitive, Eq, PartialEq)]
 pub enum HeadType {
@@ -41,49 +41,6 @@ bitflags! {
     }
 }
 
-// const BLOCK_HEAD_SIZE: usize = 7;
-
-// #[derive(Debug, Clone, PartialEq, Default)]
-// pub struct BlockHead {
-//     crc: u16,
-//     typ: u8,
-//     flags: u16,
-//     size: u16,
-//     add_size: u32,
-// }
-
-// impl BlockHead {
-//     pub fn block_type(&self) -> Option<HeadType> {
-//         HeadType::from_u8(self.typ)
-//     }
-
-//     pub fn block_size(&self) -> u64 {
-//         u64::from(self.size) + u64::from(self.add_size)
-//     }
-
-//     pub fn read(mut cur: impl io::Read) -> Result<Self> {
-//         let mut minblock: [u8; BLOCK_HEAD_SIZE] = unsafe { ::std::mem::uninitialized() };
-//         cur.read_exact(&mut minblock)
-//             .or(Err(Error::buffer_too_small(BLOCK_HEAD_SIZE)))?;
-
-//         let flags = LittleEndian::read_u16(&minblock[3..5]);
-//         let add_size = if flags & PrefixFlags::HAS_ADD_SIZE.bits() > 0 {
-//             cur.read_u32::<LittleEndian>()
-//                 .or(Err(Error::buffer_too_small(BLOCK_HEAD_SIZE + 4)))?
-//         } else {
-//             0
-//         };
-
-//         Ok(Self {
-//             crc: LittleEndian::read_u16(&minblock[0..2]),
-//             typ: minblock[2],
-//             flags: flags,
-//             size: LittleEndian::read_u16(&minblock[5..]),
-//             add_size: add_size,
-//         })
-//     }
-// }
-
 pub struct BlockHeaderCommon {
     expected_header_crc: u16,
     pub header_type: HeadType,
@@ -106,7 +63,9 @@ impl ::std::fmt::Debug for BlockHeaderCommon {
 }
 
 impl BlockHeaderCommon {
-    pub async fn read_from_file<T: FileReader>(f: &mut CRC16Reader<'_, T>) -> Result<BlockHeaderCommon> {
+    pub async fn read_from_file<T: FileReader>(
+        f: &mut CRC16Reader<'_, T>,
+    ) -> Result<BlockHeaderCommon> {
         let header_crc = f.read_u16().await?;
 
         let header_type_raw = f.read_u8().await?;
@@ -138,125 +97,6 @@ impl BlockHeaderCommon {
     }
 }
 
-//#[derive(Debug, Clone, Copy, PartialEq, Default)]
-//pub struct BlockPrefix<'a> {
-//    // FIELD BYTES
-//    // HEAD_CRC 2
-//    // HEAD_TYPE 1
-//    // HEAD_FLAGS 2
-//    // HEAD_SIZE 2
-//    // ADD_SIZE 4 (optional)
-//    main: &'a [u8],
-//    // add_size: Option<&'a [u8]>,
-//}
-//
-//impl<'a> BlockPrefix<'a> {
-//    pub fn crc(&self) -> u16 {
-//        LittleEndian::read_u16(&self.main[0..2])
-//    }
-//
-//    pub fn crc_digest(&self, seed: u16) -> crc16::Digest {
-//        // panic!("this method is broken still.");
-//        let mut digest = crc::crc16::Digest::new(seed);
-//        digest.write(&self.main[2..]);
-//        // if let Some(ref x) = self.add_size {
-//        //     digest.write(x);
-//        // }
-//        return digest;
-//    }
-//
-//    pub fn raw_block_type(&self) -> u8 {
-//        self.main[2]
-//    }
-//
-//    pub fn block_type(&self) -> Option<HeadType> {
-//        HeadType::from_u8(self.raw_block_type())
-//    }
-//
-//    pub fn flags(&self) -> u16 {
-//        LittleEndian::read_u16(&self.main[3..5])
-//    }
-//
-//    pub fn size(&self) -> u64 {
-//        // let add_size = self
-//        //     .add_size
-//        //     .map(|x| LittleEndian::read_u32(x))
-//        //     .unwrap_or(0);
-//        // let size = LittleEndian::read_u16(&self.main[5..7]);
-//        // u64::from(size) + u64::from(add_size)
-//        u64::from(LittleEndian::read_u16(&self.main[5..7]))
-//    }
-//
-//    pub fn from_buf(buf: &'a [u8]) -> Result<(BlockPrefix<'a>, &'a [u8])> {
-//        let mut cursor = BufferCursor::new(buf);
-//        let bp = BlockPrefix::from_cursor(&mut cursor)?;
-//        let rest = cursor.rest();
-//        Ok((bp, rest))
-//        // if buf.len() < 7 {
-//        //     return Err(Error::buffer_too_small(7));
-//        // }
-//        // // let flags = LittleEndian::read_u16(&buf[3..5]);
-//
-//        // // let has_add_size = flags & PrefixFlags::HAS_ADD_SIZE.bits() > 0;
-//        // // if has_add_size && buf.len() < 7 + 4 {
-//        // //     return Err(Error::buffer_too_small(7 + 4));
-//        // // }
-//        // // let rest = if has_add_size {
-//        // //     &buf[(7 + 4)..]
-//        // // } else {
-//        // //     &buf[7..]
-//        // // };
-//        // // let add_size = if has_add_size {
-//        // //     Some(&buf[7..(7 + 4)])
-//        // // } else {
-//        // //     None
-//        // // };
-//
-//        // Ok((
-//        //     BlockPrefix {
-//        //         main: &buf[0..7],
-//        //         // add_size: add_size,
-//        //     },
-//        //     &buf[7..],
-//        // ))
-//    }
-//
-//    pub fn from_cursor(cursor: &mut BufferCursor<'a>) -> Result<BlockPrefix<'a>> {
-//        Ok(BlockPrefix {
-//            main: cursor.read(7)?,
-//        })
-//    }
-//
-//    pub fn as_owned(&self) -> Result<OwnedBlockPrefix> {
-//        Ok(OwnedBlockPrefix {
-//            expected_crc: self.crc(),
-//            block_type: self.block_type().ok_or_else(|| {
-//                Error::bad_block(format!("Unknown block type: {}", self.raw_block_type()))
-//            })?,
-//            flags: self.flags(),
-//            size: self.size(),
-//        })
-//    }
-//}
-//
-//#[derive(Clone)]
-//pub struct OwnedBlockPrefix {
-//    pub expected_crc: u16,
-//    pub block_type: HeadType,
-//    pub flags: u16,
-//    pub size: u64,
-//}
-//
-//impl ::std::fmt::Debug for OwnedBlockPrefix {
-//    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-//        write!(
-//            f,
-//            "OwnedBlockPrefix<expected_crc: {:?}, block_type: {:?}, flags: {:?}, size: {:?}>",
-//            self.expected_crc, self.block_type, self.flags, self.size
-//        )
-//    }
-//}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -281,20 +121,20 @@ mod tests {
     //     assert!(res.is_err());
     // }
 
-//    #[test]
-//    fn test_block_prefix_read_reads_magic() {
-//        let magic = magic_block_prefix();
-//        let res = BlockPrefix::from_buf(&magic);
-//        assert!(res.is_ok());
-//
-//        let (bh, rest) = res.unwrap();
-//        assert_eq!(bh.crc(), 0x6152);
-//        assert_eq!(bh.block_type(), Some(HeadType::MarkerBlock));
-//        assert_eq!(bh.flags(), 0x1a21);
-//        assert_eq!(bh.size(), 0x0007);
-//
-//        assert_eq!(rest.len(), 0);
-//    }
+    //    #[test]
+    //    fn test_block_prefix_read_reads_magic() {
+    //        let magic = magic_block_prefix();
+    //        let res = BlockPrefix::from_buf(&magic);
+    //        assert!(res.is_ok());
+    //
+    //        let (bh, rest) = res.unwrap();
+    //        assert_eq!(bh.crc(), 0x6152);
+    //        assert_eq!(bh.block_type(), Some(HeadType::MarkerBlock));
+    //        assert_eq!(bh.flags(), 0x1a21);
+    //        assert_eq!(bh.size(), 0x0007);
+    //
+    //        assert_eq!(rest.len(), 0);
+    //    }
 
     // #[test]
     // fn test_read_old_block_head_reads_block_head() {

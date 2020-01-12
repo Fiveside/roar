@@ -5,15 +5,12 @@
 
 mod block;
 mod error;
-// mod traits;
 mod io;
 
-// use async_std::fs;
+use async_trait::async_trait;
 use clap::{crate_authors, crate_description, crate_name, crate_version, App, Arg};
 use error::Result;
 use futures::executor::block_on;
-// use futures::io::BufReader;
-use async_trait::async_trait;
 use futures::prelude::*;
 
 fn main() {
@@ -37,11 +34,9 @@ async fn run(filename: &str) -> Result<()> {
     let f = ::async_std::fs::File::open(filename).await.unwrap();
     let bf = ::async_std::io::BufReader::new(f);
     let mut fr = io::AsyncFileReader::new(bf);
-    let mut fl = io::ByteReader::new(&mut fr);
 
     let block = block::read_block(&mut fr).await?;
     println!("OOOooooo {:?}", block);
-//    println!("OooooOOoo {:?}", fl.read_u16().await?);
     Ok(())
 }
 
