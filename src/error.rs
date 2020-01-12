@@ -7,6 +7,9 @@ pub enum RoarError {
 
     #[error("IO Error")]
     IO(#[from] std::io::Error),
+
+    #[error("Unknown block type: {0}")]
+    UnknownBlockType(u8),
 }
 
 pub type Result<T> = ::std::result::Result<T, RoarError>;

@@ -1,6 +1,5 @@
-use super::cursor::BufferCursor;
-use crate::block::cursor::AsyncCRC16Cursor;
-use crate::error::{Error, Result};
+use crate::error::{Result, RoarError};
+use crate::io::{FileReader, CRC16Reader};
 use bitflags::bitflags;
 use byteorder::{ByteOrder, LittleEndian, ReadBytesExt};
 use crc::crc16;
@@ -9,6 +8,7 @@ use futures::prelude::*;
 use futures::{AsyncRead, AsyncReadExt};
 use num::FromPrimitive;
 use std::hash::Hasher;
+use num_derive::FromPrimitive;
 
 #[derive(Debug, Copy, Clone, FromPrimitive, Eq, PartialEq)]
 pub enum HeadType {
@@ -90,37 +90,34 @@ pub struct BlockHeaderCommon {
     header_flags: PrefixFlags,
     header_size: u16,
     additional_size: u32,
-    pub digest: crc::crc16::Digest,
 }
 
 impl ::std::fmt::Debug for BlockHeaderCommon {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
         write!(
             f,
-            "BlockHeaderCommon{{ expected_crc: {:?}, header_type: {:?}, header_flags: {:?}, reported_block_size: {:?}, computed_crc16: {:?} }}",
+            "BlockHeaderCommon{{ expected_crc: {:?}, header_type: {:?}, header_flags: {:?}, reported_block_size: {:?} }}",
             self.expected_header_crc,
             self.header_type,
             self.header_flags,
             self.block_size(),
-            self.digest.sum16()
         )
     }
 }
 
 impl BlockHeaderCommon {
-    pub async fn read_from_file<T: AsyncRead>(f: T) -> Result<BlockHeaderCommon> {
-        // This seed is incorrect.
-        let mut cursor = AsyncCRC16Cursor::new(f, 0);
-        let header_crc = cursor.read_u16().await?;
+    pub async fn read_from_file<T: FileReader>(f: &mut CRC16Reader<'_, T>) -> Result<BlockHeaderCommon> {
+        let header_crc = f.read_u16().await?;
 
-        let header_type = HeadType::from_u8(cursor.read_u8().await?)
-            .ok_or(Error::bad_block("Unknown block type".into()))?;
+        let header_type_raw = f.read_u8().await?;
+        let header_type = HeadType::from_u8(header_type_raw)
+            .ok_or(RoarError::UnknownBlockType(header_type_raw))?;
 
-        let header_flags = PrefixFlags::from_bits_truncate(cursor.read_u16().await?);
-        let header_size = cursor.read_u16().await?;
+        let header_flags = PrefixFlags::from_bits_truncate(f.read_u16().await?);
+        let header_size = f.read_u16().await?;
 
         let additional_size = if header_flags.contains(PrefixFlags::HAS_ADD_SIZE) {
-            cursor.read_u32().await?
+            f.read_u32().await?
         } else {
             0
         };
@@ -131,7 +128,6 @@ impl BlockHeaderCommon {
             header_flags,
             header_size,
             additional_size,
-            digest: cursor.digest,
         })
     }
 
@@ -285,20 +281,20 @@ mod tests {
     //     assert!(res.is_err());
     // }
 
-    #[test]
-    fn test_block_prefix_read_reads_magic() {
-        let magic = magic_block_prefix();
-        let res = BlockPrefix::from_buf(&magic);
-        assert!(res.is_ok());
-
-        let (bh, rest) = res.unwrap();
-        assert_eq!(bh.crc(), 0x6152);
-        assert_eq!(bh.block_type(), Some(HeadType::MarkerBlock));
-        assert_eq!(bh.flags(), 0x1a21);
-        assert_eq!(bh.size(), 0x0007);
-
-        assert_eq!(rest.len(), 0);
-    }
+//    #[test]
+//    fn test_block_prefix_read_reads_magic() {
+//        let magic = magic_block_prefix();
+//        let res = BlockPrefix::from_buf(&magic);
+//        assert!(res.is_ok());
+//
+//        let (bh, rest) = res.unwrap();
+//        assert_eq!(bh.crc(), 0x6152);
+//        assert_eq!(bh.block_type(), Some(HeadType::MarkerBlock));
+//        assert_eq!(bh.flags(), 0x1a21);
+//        assert_eq!(bh.size(), 0x0007);
+//
+//        assert_eq!(rest.len(), 0);
+//    }
 
     // #[test]
     // fn test_read_old_block_head_reads_block_head() {

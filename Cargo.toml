@@ -19,11 +19,11 @@ clap = "2.33"
 crc = "1"
 bitflags = "*"
 num = "0.2"
-num-derive = "0.2"
+num-derive = "0.3"
 num-traits = "0.2"
 
-
-pin-utils = "0.1.0-alpha.4"
+#
+#pin-utils = "0.1.0-alpha.4"
 
 
 

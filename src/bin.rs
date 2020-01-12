@@ -3,7 +3,7 @@
 // #[macro_use]
 // extern crate num_derive;
 
-// mod block;
+mod block;
 mod error;
 // mod traits;
 mod io;
@@ -26,39 +26,22 @@ fn main() {
     let filename = matches.value_of("file").unwrap();
     if let Err(e) = block_on(run(filename)) {
         eprintln!("An error ocurred: {}", e);
-        // use failure::Fail;
-        // if let Some(bt) = e.backtrace() {
-        //     eprintln!("Backtrace: ");
-        //     eprintln!("{}", bt);
-        // }
+        //        if let Some(bt) = e.backtrace() {
+        //            eprintln!("Backtrace: ");
+        //            eprintln!("{}", bt);
+        //        }
     }
 }
-
-// #[async_trait]
-// trait FileReader: std::marker::Unpin + std::marker::Send {
-//     async fn read_u16(&mut self) -> Result<u16>;
-// }
-
-// struct AsyncFileReaderImpl<T: AsyncRead + std::marker::Unpin + std::marker::Send> {
-//     f: T,
-// }
-
-// #[async_trait]
-// impl<T: AsyncRead + std::marker::Unpin + Send> FileReader for AsyncFileReaderImpl<T> {
-//     async fn read_u16(&mut self) -> Result<u16> {
-//         let mut buf: [u8; 2] = [0; 2];
-//         self.f.read_exact(&mut buf).await.unwrap();
-//         Ok(5)
-//     }
-// }
 
 async fn run(filename: &str) -> Result<()> {
     let f = ::async_std::fs::File::open(filename).await.unwrap();
     let bf = ::async_std::io::BufReader::new(f);
-    let fr = io::AsyncFileReader::new(bf);
-    let mut fl = io::FileReaderLease::new(fr);
-    let res = fl.read_u16(1244232323233).await?;
-    println!("OOOooooo {}", res);
+    let mut fr = io::AsyncFileReader::new(bf);
+    let mut fl = io::ByteReader::new(&mut fr);
+
+    let block = block::read_block(&mut fr).await?;
+    println!("OOOooooo {:?}", block);
+//    println!("OooooOOoo {:?}", fl.read_u16().await?);
     Ok(())
 }
 
