@@ -5,6 +5,7 @@ mod prefix;
 pub use archive::ArchiveHeader;
 pub use prefix::BlockHeaderCommon;
 pub use prefix::HeadType;
+pub use file::FilePrefix;
 
 use crate::error::{Result, RoarError};
 use crate::io::{ByteReader, CRC16Reader, FileReader};
@@ -13,6 +14,7 @@ use crate::io::{ByteReader, CRC16Reader, FileReader};
 pub enum Block {
     Marker(archive::Marker),
     Archive(ArchiveHeader),
+    File(FilePrefix),
 }
 
 pub async fn read_block(f: &mut impl FileReader) -> Result<Block> {
@@ -22,6 +24,7 @@ pub async fn read_block(f: &mut impl FileReader) -> Result<Block> {
     Ok(match block.header_type {
         HeadType::MarkerBlock => Block::Marker(archive::Marker::parse(cursor, block).await),
         HeadType::ArchiveHeader => Block::Archive(ArchiveHeader::parse(cursor, block).await?),
-        _ => todo!(),
+        HeadType::FileHeader => Block::File(FilePrefix::parse(cursor, block).await?),
+        _ => todo!("unimplemented block type: {:?}", block.header_type),
     })
 }

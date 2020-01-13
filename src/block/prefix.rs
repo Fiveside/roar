@@ -6,27 +6,55 @@ use crc::crc16;
 use crc::crc16::Hasher16;
 use futures::prelude::*;
 use futures::{AsyncRead, AsyncReadExt};
-use num::FromPrimitive;
-use num_derive::FromPrimitive;
 use std::hash::Hasher;
 
-#[derive(Debug, Copy, Clone, FromPrimitive, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum HeadType {
-    MarkerBlock = 0x72,
-    ArchiveHeader = 0x73,
-    FileHeader = 0x74,
-    OldCommentHeader = 0x75,
-    OldAuthenticityInformation = 0x76,
-    OldSubBlock = 0x77,
-    OldRecoveryRecord = 0x78,
-    OldAuthenticityInformation2 = 0x79,
-    SubBlock = 0x7a,
-    Terminator = 0x7b,
+    MarkerBlock,
+    ArchiveHeader,
+    FileHeader,
+    OldCommentHeader,
+    OldAuthenticityInformation,
+    OldSubBlock,
+    OldRecoveryRecord,
+    OldAuthenticityInformation2,
+    SubBlock,
+    Terminator,
+    Unknown(u8),
 }
 
 impl HeadType {
-    pub fn from_u8(that: u8) -> Option<HeadType> {
-        FromPrimitive::from_u8(that)
+    pub fn from_u8(that: u8) -> Self {
+        use HeadType::*;
+        match that {
+            0x72 => MarkerBlock,
+            0x73 => ArchiveHeader,
+            0x74 => FileHeader,
+            0x75 => OldCommentHeader,
+            0x76 => OldAuthenticityInformation,
+            0x77 => OldSubBlock,
+            0x78 => OldRecoveryRecord,
+            0x79 => OldAuthenticityInformation2,
+            0x7a => SubBlock,
+            0x7b => Terminator,
+            _ => Unknown(that),
+        }
+    }
+    pub fn as_u8(&self) -> u8 {
+        use HeadType::*;
+        match self {
+            MarkerBlock => 0x72,
+            ArchiveHeader => 0x73,
+            FileHeader => 0x74,
+            OldCommentHeader => 0x75,
+            OldAuthenticityInformation => 0x76,
+            OldSubBlock => 0x77,
+            OldRecoveryRecord => 0x78,
+            OldAuthenticityInformation2 => 0x79,
+            SubBlock => 0x7a,
+            Terminator => 0x7b,
+            Unknown(ref x) => *x,
+        }
     }
 }
 
@@ -44,7 +72,8 @@ bitflags! {
 pub struct BlockHeaderCommon {
     expected_header_crc: u16,
     pub header_type: HeadType,
-    header_flags: PrefixFlags,
+    flags: PrefixFlags,
+    pub flags_raw: u16,
     header_size: u16,
     additional_size: u32,
 }
@@ -56,7 +85,7 @@ impl ::std::fmt::Debug for BlockHeaderCommon {
             "BlockHeaderCommon{{ expected_crc: {:?}, header_type: {:?}, header_flags: {:?}, reported_block_size: {:?} }}",
             self.expected_header_crc,
             self.header_type,
-            self.header_flags,
+            self.flags,
             self.block_size(),
         )
     }
@@ -69,10 +98,10 @@ impl BlockHeaderCommon {
         let header_crc = f.read_u16().await?;
 
         let header_type_raw = f.read_u8().await?;
-        let header_type = HeadType::from_u8(header_type_raw)
-            .ok_or(RoarError::UnknownBlockType(header_type_raw))?;
+        let header_type = HeadType::from_u8(header_type_raw);
 
-        let header_flags = PrefixFlags::from_bits_truncate(f.read_u16().await?);
+        let header_flags_raw = f.read_u16().await?;
+        let header_flags = PrefixFlags::from_bits_truncate(header_flags_raw);
         let header_size = f.read_u16().await?;
 
         let additional_size = if header_flags.contains(PrefixFlags::HAS_ADD_SIZE) {
@@ -84,7 +113,8 @@ impl BlockHeaderCommon {
         Ok(BlockHeaderCommon {
             expected_header_crc: header_crc,
             header_type,
-            header_flags,
+            flags: header_flags,
+            flags_raw: header_flags_raw,
             header_size,
             additional_size,
         })

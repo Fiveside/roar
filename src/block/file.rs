@@ -1,14 +1,12 @@
 use crate::error::{RoarError, Result};
 use bitflags::bitflags;
 use byteorder::{ByteOrder, LittleEndian, ReadBytesExt};
-use num_traits::FromPrimitive;
-use num_derive::FromPrimitive;
 use super::BlockHeaderCommon;
 use crate::io::{CRC16Reader, FileReader};
 use std::io::Cursor;
 use crc::Hasher16;
 
-#[derive(Debug, Copy, Clone, FromPrimitive, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 enum OperatingSystem {
     Dos,
     OS2,
@@ -34,7 +32,7 @@ impl OperatingSystem {
     }
     fn as_u8(&self) -> u8 {
         use OperatingSystem::*;
-        match seflf {
+        match self {
             Dos => 0x0,
             OS2 => 0x1,
             Windows => 0x2,
@@ -46,14 +44,14 @@ impl OperatingSystem {
     }
 }
 
-#[derive(Debug, Copy, Clone, FromPrimitive, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 enum PackingMethod {
-    Store = 0x30,
-    Fastest = 0x31,
-    Fast = 0x32,
-    Normal = 0x33,
-    Good = 0x34,
-    Best = 0x35,
+    Store ,
+    Fastest,
+    Fast,
+    Normal,
+    Good,
+    Best,
     Unknown(u8),
 }
 
@@ -113,61 +111,51 @@ bitflags! {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug)]
 pub struct FilePrefix {
     block_prefix: BlockHeaderCommon,
 
     // PACK_SIZE       4                Compressed file size
     // Note that if the high fields flag is set, then this is the little end of a u64
-    little_packed_size: u32,
 
     // UNP_SIZE        4                Uncompressed file size
     // Note that if the high fields flag is set, then this is the little end of a u64
-    little_unpacked_size: u32,
 
     // HOST_OS         1                Operating system used for archiving (See the 'Operating System Indicators' table for the flags used)
-    host_os: OperatingSystem,
-
     // FILE_CRC        4                File CRC
-    file_crc: u32,
-
     // FTIME           4                Date and time in standard MS DOS format
-    ftime: u32,
-
     // UNP_VER         1                RAR version needed to extract file (Version number is encoded as 10 * Major version + minor version.)
-    unpack_version: u8,
-
     // METHOD          1                Packing method (Please see 'Packing Method' table for all possibilities
-    packing_method: PackingMethod,
-
     // NAME_SIZE       2                File name size
-    name_size: u16,
-
     // ATTR            4                File attributes
+    // HIGH_PACK_SIZE 4 (optional)
+    // HIGH_UNPACK_SIZE 4 (optional)
+
+    // FILE_NAME
+
+    // SALT 8  (optional)
+    // EXT_TIME (optional?)
+
+    packed_size: u64,
+    unpacked_size: u64,
+    host_os: OperatingSystem,
+    declared_file_crc: u32,
+    ftime: u32,
+    unpack_version: u8,
+    packing_method: PackingMethod,
+    name_size: u16,
     attrs: u32,
-
-    // HIGH_PACK_SIZE 4
-    // HIGH_UNPACK_SIZE 4
-    // holds [HIGH_PACK_SIZE, HIGH_UNP_SIZE]
-    high_size: Option<&'a [u8]>,
-
-    // holds file_name
-    file_name: &'a [u8],
-
-    // SALT 8
-    // holds salt
-    salt: Option<&'a [u8]>,
-
-    // holds EXT_TIME
-    ext_time: Option<&'a [u8]>,
-
+    file_name: Vec<u8>,  // TODO: parse the string inside
+    salt: Option<u8>,
+    ext_time: Option<Vec<u8>>,
     header_crc: u16,
 }
 
 impl FilePrefix {
-    pub async fn parse<T: FileReader>(mut f: CRC16Reader<T>, prefix: BlockHeaderCommon) -> Result<FilePrefix> {
-        let little_packed_size = f.read_u32().await?;
-        let little_unpacked_size = f.read_u32().await?;
+    pub async fn parse<T: FileReader>(mut f: CRC16Reader<'_, T>, prefix: BlockHeaderCommon) -> Result<FilePrefix> {
+        let psize = PartiallyDeclaredSize::parse(&mut f).await?;
+        // let little_packed_size = f.read_u32().await?;
+        // let little_unpacked_size = f.read_u32().await?;
         let host_os = OperatingSystem::from_u8(f.read_u8().await?);
         let file_crc = f.read_u32().await?;
         let ftime = f.read_u32().await?;
@@ -183,19 +171,28 @@ impl FilePrefix {
 //        let name = cursor.read(usize::from(prefix.name_size()))?;
 //        let salt = parse_header_salt(cursor, &flags)?;
 
+        let flags = FileFlags::from_bits_truncate(prefix.flags_raw);
+        let size = psize.parse_extra(&mut f, &flags).await?;
+        let name = f.read(usize::from(name_size)).await?;
+        let salt = parse_header_salt(&mut f, &flags).await?;
+
+        // TODO: parse ext time.
 
         let digest = f.hasher().sum16();
         Ok(FilePrefix {
             block_prefix: prefix,
-            little_packed_size,
-            little_unpacked_size,
+            packed_size: size.packed,
+            unpacked_size: size.unpacked,
             host_os,
-            file_crc,
+            declared_file_crc: file_crc,
             ftime,
             unpack_version,
             packing_method,
             name_size,
             attrs,
+            file_name: name,
+            salt,
+            ext_time: None,
             header_crc: digest,
         })
         // let (prefix, prefix_rest) = BlockPrefix::from_buf(buf)?;
@@ -257,74 +254,105 @@ impl FilePrefix {
 //    }
 }
 
-fn parse_header_highsize<'a>(
-    cursor: &mut BufferCursor<'a>,
-    flags: &FileFlags,
-) -> Result<Option<&'a [u8]>> {
-    if flags.contains(FileFlags::HighFields) {
-        Ok(Some(cursor.read(8)?))
-    } else {
-        Ok(None)
+struct PartiallyDeclaredSize {
+    packed: u32,
+    unpacked: u32,
+}
+
+struct DeclaredSize {
+    packed: u64,
+    unpacked: u64,
+}
+
+impl PartiallyDeclaredSize {
+    async fn parse<T: FileReader>(f: &mut CRC16Reader<'_, T>) -> Result<Self> {
+        let packed = f.read_u32().await?;
+        let unpacked = f.read_u32().await?;
+        Ok(PartiallyDeclaredSize { packed, unpacked })
+    }
+
+    async fn parse_extra<T: FileReader>(self, f: &mut CRC16Reader<'_, T>, flags: &FileFlags) -> Result<DeclaredSize> {
+        if flags.contains(FileFlags::HighFields) {
+            let high_packed = f.read_u32().await?;
+            let high_unpacked = f.read_u32().await?;
+            todo!("combine 2 u32s into a u64")
+        } else {
+            Ok(DeclaredSize {
+                packed: u64::from(self.packed),
+                unpacked: u64::from(self.unpacked),
+            })
+        }
     }
 }
 
-fn parse_header_salt<'a>(
-    cursor: &mut BufferCursor<'a>,
+// async fn parse_declared_sizes<T: FileReader>(
+//     cursor: &mut CRC16Reader<'_, T>,
+//     flags: &FileFlags,
+// ) -> Result<DeclaredSize> {
+//     if flags.contains(FileFlags::HighFields) {
+//         Ok(Some(cursor.read(8)?))
+//     } else {
+//         Ok(None)
+//     }
+// }
+
+async fn parse_header_salt<T: FileReader>(
+    f: &mut CRC16Reader<'_, T>,
     flags: &FileFlags,
-) -> Result<Option<&'a [u8]>> {
+) -> Result<Option<u8>> {
     if flags.contains(FileFlags::Salted) {
-        Ok(Some(cursor.read(8)?))
+        Ok(Some(f.read_u8().await?))
     } else {
         Ok(None)
     }
 }
 
-#[derive(Debug, Copy, Clone)]
-pub struct FileHeader<'a> {
-    prefix: FilePrefix<'a>,
+// #[derive(Debug, Copy, Clone)]
+// pub struct FileHeader<'a> {
+//     prefix: FilePrefix<'a>,
 
-    // HIGH_PACK_SIZE 4
-    // HIGH_UNPACK_SIZE 4
-    // holds [HIGH_PACK_SIZE, HIGH_UNP_SIZE]
-    high_size: Option<&'a [u8]>,
+//     // HIGH_PACK_SIZE 4
+//     // HIGH_UNPACK_SIZE 4
+//     // holds [HIGH_PACK_SIZE, HIGH_UNP_SIZE]
+//     high_size: Option<&'a [u8]>,
 
-    // holds file_name
-    file_name: &'a [u8],
+//     // holds file_name
+//     file_name: &'a [u8],
 
-    // SALT 8
-    // holds salt
-    salt: Option<&'a [u8]>,
+//     // SALT 8
+//     // holds salt
+//     salt: Option<&'a [u8]>,
 
-    // holds EXT_TIME
-    ext_time: Option<&'a [u8]>,
-}
+//     // holds EXT_TIME
+//     ext_time: Option<&'a [u8]>,
+// }
 
-impl<'a> FileHeader<'a> {
-    pub fn from_buf(buf: &'a [u8]) -> Result<(FileHeader<'a>, &'a [u8])> {
-        let mut cursor = BufferCursor::new(buf);
-        let fh = FileHeader::from_cursor(&mut cursor)?;
-        Ok((fh, cursor.rest()))
-    }
+// impl<'a> FileHeader<'a> {
+//     pub fn from_buf(buf: &'a [u8]) -> Result<(FileHeader<'a>, &'a [u8])> {
+//         let mut cursor = BufferCursor::new(buf);
+//         let fh = FileHeader::from_cursor(&mut cursor)?;
+//         Ok((fh, cursor.rest()))
+//     }
 
-    pub fn from_cursor(cursor: &mut BufferCursor<'a>) -> Result<FileHeader<'a>> {
-        let prefix = FilePrefix::from_cursor(cursor)?;
-        let flags = prefix.flags();
-        let high_size = parse_header_highsize(cursor, &flags)?;
-        let name = cursor.read(usize::from(prefix.name_size()))?;
-        let salt = parse_header_salt(cursor, &flags)?;
+//     pub fn from_cursor(cursor: &mut BufferCursor<'a>) -> Result<FileHeader<'a>> {
+//         let prefix = FilePrefix::from_cursor(cursor)?;
+//         let flags = prefix.flags();
+//         let high_size = parse_header_highsize(cursor, &flags)?;
+//         let name = cursor.read(usize::from(prefix.name_size()))?;
+//         let salt = parse_header_salt(cursor, &flags)?;
 
-        // TODO: ext_time
-        todo!("Parse ext_time");
+//         // TODO: ext_time
+//         todo!("Parse ext_time");
 
-        Ok(FileHeader {
-            prefix: prefix,
-            high_size: high_size,
-            file_name: name,
-            salt: salt,
-            ext_time: None,
-        })
-    }
-}
+//         Ok(FileHeader {
+//             prefix: prefix,
+//             high_size: high_size,
+//             file_name: name,
+//             salt: salt,
+//             ext_time: None,
+//         })
+//     }
+// }
 
 #[cfg(test)]
 mod tests {

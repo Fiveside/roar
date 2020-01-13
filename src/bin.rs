@@ -35,8 +35,10 @@ async fn run(filename: &str) -> Result<()> {
     let bf = ::async_std::io::BufReader::new(f);
     let mut fr = io::AsyncFileReader::new(bf);
 
-    let block = block::read_block(&mut fr).await?;
-    println!("OOOooooo {:?}", block);
+    for _ in 0..3 {
+        let block = block::read_block(&mut fr).await?;
+        println!("OOOooooo {:?}", block);
+    }
     Ok(())
 }
 
