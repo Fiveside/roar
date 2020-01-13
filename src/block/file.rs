@@ -1,10 +1,10 @@
-use crate::error::{RoarError, Result};
+use super::BlockHeaderCommon;
+use crate::error::{Result, RoarError};
+use crate::io::{CRC16Reader, FileReader};
 use bitflags::bitflags;
 use byteorder::{ByteOrder, LittleEndian, ReadBytesExt};
-use super::BlockHeaderCommon;
-use crate::io::{CRC16Reader, FileReader};
-use std::io::Cursor;
 use crc::Hasher16;
+use std::io::Cursor;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 enum OperatingSystem {
@@ -39,14 +39,14 @@ impl OperatingSystem {
             Unix => 0x3,
             MacOS => 0x4,
             BeOS => 0x5,
-            Unknown(ref x) => *x
+            Unknown(ref x) => *x,
         }
     }
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 enum PackingMethod {
-    Store ,
+    Store,
     Fastest,
     Fast,
     Normal,
@@ -135,7 +135,6 @@ pub struct FilePrefix {
 
     // SALT 8  (optional)
     // EXT_TIME (optional?)
-
     packed_size: u64,
     unpacked_size: u64,
     host_os: OperatingSystem,
@@ -145,14 +144,17 @@ pub struct FilePrefix {
     packing_method: PackingMethod,
     name_size: u16,
     attrs: u32,
-    file_name: Vec<u8>,  // TODO: parse the string inside
+    file_name: Vec<u8>, // TODO: parse the string inside
     salt: Option<u8>,
     ext_time: Option<Vec<u8>>,
     header_crc: u16,
 }
 
 impl FilePrefix {
-    pub async fn parse<T: FileReader>(mut f: CRC16Reader<'_, T>, prefix: BlockHeaderCommon) -> Result<FilePrefix> {
+    pub async fn parse<T: FileReader>(
+        mut f: CRC16Reader<'_, T>,
+        prefix: BlockHeaderCommon,
+    ) -> Result<FilePrefix> {
         let psize = PartiallyDeclaredSize::parse(&mut f).await?;
         // let little_packed_size = f.read_u32().await?;
         // let little_unpacked_size = f.read_u32().await?;
@@ -164,12 +166,11 @@ impl FilePrefix {
         let name_size = f.read_u16().await?;
         let attrs = f.read_u32().await?;
 
-
-//        let prefix = FilePrefix::from_cursor(cursor)?;
-//        let flags = prefix.flags();
-//        let high_size = parse_header_highsize(cursor, &flags)?;
-//        let name = cursor.read(usize::from(prefix.name_size()))?;
-//        let salt = parse_header_salt(cursor, &flags)?;
+        //        let prefix = FilePrefix::from_cursor(cursor)?;
+        //        let flags = prefix.flags();
+        //        let high_size = parse_header_highsize(cursor, &flags)?;
+        //        let name = cursor.read(usize::from(prefix.name_size()))?;
+        //        let salt = parse_header_salt(cursor, &flags)?;
 
         let flags = FileFlags::from_bits_truncate(prefix.flags_raw);
         let size = psize.parse_extra(&mut f, &flags).await?;
@@ -208,50 +209,50 @@ impl FilePrefix {
         // ))
     }
 
-//    fn prefix(&self) -> BlockPrefix {
-//        self.block_prefix
-//    }
-//
-//    fn flags(&self) -> FileFlags {
-//        FileFlags::from_bits_truncate(self.prefix().flags())
-//    }
-//
-//    fn low_compress_size(&self) -> u32 {
-//        LittleEndian::read_u32(&self.buf[0..4])
-//    }
-//
-//    fn low_uncompress_size(&self) -> u32 {
-//        LittleEndian::read_u32(&self.buf[4..8])
-//    }
-//
-//    fn creation_os(&self) -> Option<OperatingSystem> {
-//        OperatingSystem::from_u8(self.buf[8])
-//    }
-//
-//    fn file_crc32(&self) -> u32 {
-//        LittleEndian::read_u32(&self.buf[9..9 + 4])
-//    }
-//
-//    fn ftime_raw(&self) -> u32 {
-//        LittleEndian::read_u32(&self.buf[13..13 + 4])
-//    }
-//
-//    // This might need an enum later as well...
-//    fn unpack_version(&self) -> u8 {
-//        self.buf[17]
-//    }
-//
-//    fn packing_method(&self) -> Option<PackingMethod> {
-//        PackingMethod::from_u8(self.buf[18])
-//    }
-//
-//    fn name_size(&self) -> u16 {
-//        LittleEndian::read_u16(&self.buf[19..21])
-//    }
-//
-//    fn file_attrs(&self) -> u32 {
-//        LittleEndian::read_u32(&self.buf[21..])
-//    }
+    //    fn prefix(&self) -> BlockPrefix {
+    //        self.block_prefix
+    //    }
+    //
+    //    fn flags(&self) -> FileFlags {
+    //        FileFlags::from_bits_truncate(self.prefix().flags())
+    //    }
+    //
+    //    fn low_compress_size(&self) -> u32 {
+    //        LittleEndian::read_u32(&self.buf[0..4])
+    //    }
+    //
+    //    fn low_uncompress_size(&self) -> u32 {
+    //        LittleEndian::read_u32(&self.buf[4..8])
+    //    }
+    //
+    //    fn creation_os(&self) -> Option<OperatingSystem> {
+    //        OperatingSystem::from_u8(self.buf[8])
+    //    }
+    //
+    //    fn file_crc32(&self) -> u32 {
+    //        LittleEndian::read_u32(&self.buf[9..9 + 4])
+    //    }
+    //
+    //    fn ftime_raw(&self) -> u32 {
+    //        LittleEndian::read_u32(&self.buf[13..13 + 4])
+    //    }
+    //
+    //    // This might need an enum later as well...
+    //    fn unpack_version(&self) -> u8 {
+    //        self.buf[17]
+    //    }
+    //
+    //    fn packing_method(&self) -> Option<PackingMethod> {
+    //        PackingMethod::from_u8(self.buf[18])
+    //    }
+    //
+    //    fn name_size(&self) -> u16 {
+    //        LittleEndian::read_u16(&self.buf[19..21])
+    //    }
+    //
+    //    fn file_attrs(&self) -> u32 {
+    //        LittleEndian::read_u32(&self.buf[21..])
+    //    }
 }
 
 struct PartiallyDeclaredSize {
@@ -271,7 +272,11 @@ impl PartiallyDeclaredSize {
         Ok(PartiallyDeclaredSize { packed, unpacked })
     }
 
-    async fn parse_extra<T: FileReader>(self, f: &mut CRC16Reader<'_, T>, flags: &FileFlags) -> Result<DeclaredSize> {
+    async fn parse_extra<T: FileReader>(
+        self,
+        f: &mut CRC16Reader<'_, T>,
+        flags: &FileFlags,
+    ) -> Result<DeclaredSize> {
         if flags.contains(FileFlags::HighFields) {
             let high_packed = f.read_u32().await?;
             let high_unpacked = f.read_u32().await?;
@@ -365,120 +370,120 @@ mod tests {
         ]
     }
 
-//    #[test]
-//    fn test_gets_low_compress_size() {
-//        let buf = prefix_buf();
-//        let (prefix, _) = FilePrefix::from_buf(&buf).unwrap();
-//        assert_eq!(prefix.low_compress_size(), 374426);
-//    }
-//
-//    #[test]
-//    fn test_gets_low_uncompress_size() {
-//        let buf = prefix_buf();
-//        let (prefix, _) = FilePrefix::from_buf(&buf).unwrap();
-//        assert_eq!(prefix.low_uncompress_size(), 374426);
-//    }
-//
-//    #[test]
-//    fn test_gets_windows_os() {
-//        let buf = prefix_buf();
-//        let (prefix, _) = FilePrefix::from_buf(&buf).unwrap();
-//        assert_eq!(prefix.creation_os(), Some(OperatingSystem::Windows));
-//    }
-//
-//    #[test]
-//    fn test_gets_file_crc32() {
-//        let buf = prefix_buf();
-//        let (prefix, _) = FilePrefix::from_buf(&buf).unwrap();
-//        assert_eq!(prefix.file_crc32(), 2003897816);
-//    }
-//
-//    #[test]
-//    fn test_gets_raw_ftime() {
-//        let buf = prefix_buf();
-//        let (prefix, _) = FilePrefix::from_buf(&buf).unwrap();
-//        assert_eq!(prefix.ftime_raw(), 1100909259);
-//    }
-//
-//    #[test]
-//    fn test_gets_unpack_version() {
-//        let buf = prefix_buf();
-//        let (prefix, _) = FilePrefix::from_buf(&buf).unwrap();
-//        assert_eq!(prefix.unpack_version(), 29);
-//    }
-//
-//    #[test]
-//    fn test_gets_packing_method() {
-//        let buf = prefix_buf();
-//        let (prefix, _) = FilePrefix::from_buf(&buf).unwrap();
-//        assert_eq!(prefix.packing_method(), Some(PackingMethod::Store));
-//    }
-//
-//    #[test]
-//    fn test_gets_name_size() {
-//        let buf = prefix_buf();
-//        let (prefix, _) = FilePrefix::from_buf(&buf).unwrap();
-//        assert_eq!(prefix.name_size(), 57);
-//    }
-//
-//    #[test]
-//    fn test_gets_file_attrs() {
-//        let buf = prefix_buf();
-//        let (prefix, _) = FilePrefix::from_buf(&buf).unwrap();
-//        assert_eq!(prefix.file_attrs(), 32);
-//    }
-//
-//    #[test]
-//    fn test_gets_flags() {
-//        let buf = prefix_buf();
-//        let (prefix, _) = FilePrefix::from_buf(&buf).unwrap();
-//        let expected = FileFlags::Dictionary3 | FileFlags::ExtTime | FileFlags::Always;
-//        assert_eq!(prefix.flags(), FileFlags::Dictionary3 | expected);
-//    }
-//
-//    #[test]
-//    fn test_parse_header_highsize_returns_nothing_when_unflagged() {
-//        let buf = vec![];
-//        let mut cursor = BufferCursor::new(&buf);
-//        let flags = FileFlags::Always;
-//        assert!(parse_header_highsize(&mut cursor, &flags)
-//            .unwrap()
-//            .is_none());
-//    }
-//
-//    #[test]
-//    fn test_parse_header_highsize_returns_8_bytes_when_flagged() {
-//        let buf = vec![1, 2, 3, 4, 5, 6, 7, 8];
-//        let mut cursor = BufferCursor::new(&buf);
-//        let flags = FileFlags::Always | FileFlags::HighFields;
-//        assert_eq!(
-//            parse_header_highsize(&mut cursor, &flags)
-//                .unwrap()
-//                .unwrap()
-//                .len(),
-//            8
-//        );
-//    }
-//
-//    #[test]
-//    fn test_parse_header_salt_returns_nothing_when_unflagged() {
-//        let buf = vec![];
-//        let mut cursor = BufferCursor::new(&buf);
-//        let flags = FileFlags::Always;
-//        assert!(parse_header_salt(&mut cursor, &flags).unwrap().is_none());
-//    }
-//
-//    #[test]
-//    fn test_parse_header_salt_returns_8_bytes_when_flagged() {
-//        let buf = vec![1, 2, 3, 4, 5, 6, 7, 8];
-//        let mut cursor = BufferCursor::new(&buf);
-//        let flags = FileFlags::Always | FileFlags::Salted;
-//        assert_eq!(
-//            parse_header_salt(&mut cursor, &flags)
-//                .unwrap()
-//                .unwrap()
-//                .len(),
-//            8
-//        );
-//    }
+    //    #[test]
+    //    fn test_gets_low_compress_size() {
+    //        let buf = prefix_buf();
+    //        let (prefix, _) = FilePrefix::from_buf(&buf).unwrap();
+    //        assert_eq!(prefix.low_compress_size(), 374426);
+    //    }
+    //
+    //    #[test]
+    //    fn test_gets_low_uncompress_size() {
+    //        let buf = prefix_buf();
+    //        let (prefix, _) = FilePrefix::from_buf(&buf).unwrap();
+    //        assert_eq!(prefix.low_uncompress_size(), 374426);
+    //    }
+    //
+    //    #[test]
+    //    fn test_gets_windows_os() {
+    //        let buf = prefix_buf();
+    //        let (prefix, _) = FilePrefix::from_buf(&buf).unwrap();
+    //        assert_eq!(prefix.creation_os(), Some(OperatingSystem::Windows));
+    //    }
+    //
+    //    #[test]
+    //    fn test_gets_file_crc32() {
+    //        let buf = prefix_buf();
+    //        let (prefix, _) = FilePrefix::from_buf(&buf).unwrap();
+    //        assert_eq!(prefix.file_crc32(), 2003897816);
+    //    }
+    //
+    //    #[test]
+    //    fn test_gets_raw_ftime() {
+    //        let buf = prefix_buf();
+    //        let (prefix, _) = FilePrefix::from_buf(&buf).unwrap();
+    //        assert_eq!(prefix.ftime_raw(), 1100909259);
+    //    }
+    //
+    //    #[test]
+    //    fn test_gets_unpack_version() {
+    //        let buf = prefix_buf();
+    //        let (prefix, _) = FilePrefix::from_buf(&buf).unwrap();
+    //        assert_eq!(prefix.unpack_version(), 29);
+    //    }
+    //
+    //    #[test]
+    //    fn test_gets_packing_method() {
+    //        let buf = prefix_buf();
+    //        let (prefix, _) = FilePrefix::from_buf(&buf).unwrap();
+    //        assert_eq!(prefix.packing_method(), Some(PackingMethod::Store));
+    //    }
+    //
+    //    #[test]
+    //    fn test_gets_name_size() {
+    //        let buf = prefix_buf();
+    //        let (prefix, _) = FilePrefix::from_buf(&buf).unwrap();
+    //        assert_eq!(prefix.name_size(), 57);
+    //    }
+    //
+    //    #[test]
+    //    fn test_gets_file_attrs() {
+    //        let buf = prefix_buf();
+    //        let (prefix, _) = FilePrefix::from_buf(&buf).unwrap();
+    //        assert_eq!(prefix.file_attrs(), 32);
+    //    }
+    //
+    //    #[test]
+    //    fn test_gets_flags() {
+    //        let buf = prefix_buf();
+    //        let (prefix, _) = FilePrefix::from_buf(&buf).unwrap();
+    //        let expected = FileFlags::Dictionary3 | FileFlags::ExtTime | FileFlags::Always;
+    //        assert_eq!(prefix.flags(), FileFlags::Dictionary3 | expected);
+    //    }
+    //
+    //    #[test]
+    //    fn test_parse_header_highsize_returns_nothing_when_unflagged() {
+    //        let buf = vec![];
+    //        let mut cursor = BufferCursor::new(&buf);
+    //        let flags = FileFlags::Always;
+    //        assert!(parse_header_highsize(&mut cursor, &flags)
+    //            .unwrap()
+    //            .is_none());
+    //    }
+    //
+    //    #[test]
+    //    fn test_parse_header_highsize_returns_8_bytes_when_flagged() {
+    //        let buf = vec![1, 2, 3, 4, 5, 6, 7, 8];
+    //        let mut cursor = BufferCursor::new(&buf);
+    //        let flags = FileFlags::Always | FileFlags::HighFields;
+    //        assert_eq!(
+    //            parse_header_highsize(&mut cursor, &flags)
+    //                .unwrap()
+    //                .unwrap()
+    //                .len(),
+    //            8
+    //        );
+    //    }
+    //
+    //    #[test]
+    //    fn test_parse_header_salt_returns_nothing_when_unflagged() {
+    //        let buf = vec![];
+    //        let mut cursor = BufferCursor::new(&buf);
+    //        let flags = FileFlags::Always;
+    //        assert!(parse_header_salt(&mut cursor, &flags).unwrap().is_none());
+    //    }
+    //
+    //    #[test]
+    //    fn test_parse_header_salt_returns_8_bytes_when_flagged() {
+    //        let buf = vec![1, 2, 3, 4, 5, 6, 7, 8];
+    //        let mut cursor = BufferCursor::new(&buf);
+    //        let flags = FileFlags::Always | FileFlags::Salted;
+    //        assert_eq!(
+    //            parse_header_salt(&mut cursor, &flags)
+    //                .unwrap()
+    //                .unwrap()
+    //                .len(),
+    //            8
+    //        );
+    //    }
 }

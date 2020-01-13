@@ -70,7 +70,7 @@ bitflags! {
 }
 
 pub struct BlockHeaderCommon {
-    expected_header_crc: u16,
+    pub expected_header_crc: u16,
     pub header_type: HeadType,
     flags: PrefixFlags,
     pub flags_raw: u16,
@@ -92,9 +92,7 @@ impl ::std::fmt::Debug for BlockHeaderCommon {
 }
 
 impl BlockHeaderCommon {
-    pub async fn read_from_file<T: FileReader>(
-        f: &mut CRC16Reader<'_, T>,
-    ) -> Result<BlockHeaderCommon> {
+    pub async fn parse<T: FileReader>(f: &mut CRC16Reader<'_, T>) -> Result<BlockHeaderCommon> {
         let header_crc = f.read_u16().await?;
 
         let header_type_raw = f.read_u8().await?;
