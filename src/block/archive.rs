@@ -22,11 +22,6 @@ impl Marker {
     }
 }
 
-struct BlockCRC {
-    expected_crc: u16,
-    actual_crc: u16,
-}
-
 #[derive(Debug)]
 pub struct ArchiveHeader {
     // prefix: BlockPrefix<'a>,

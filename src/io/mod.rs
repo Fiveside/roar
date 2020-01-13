@@ -76,7 +76,7 @@ pub struct CRC16Reader<'a, T: FileReader> {
 
 impl<'a, T: FileReader> CRC16Reader<'a, T> {
     pub fn new(f: &'a mut T) -> Self {
-        todo!("Hasher digest of 0 is not correct.  Figure out the correct one.");
+        // TODO: Hasher digest of 0 is not correct.  Figure out the correct one.
         let hasher = crc::crc16::Digest::new(0);
         CRC16Reader { f, _hasher: hasher }
     }

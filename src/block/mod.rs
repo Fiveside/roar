@@ -1,5 +1,5 @@
 mod archive;
-//mod file;
+mod file;
 mod prefix;
 
 pub use archive::ArchiveHeader;
@@ -16,11 +16,6 @@ pub enum Block {
 }
 
 pub async fn read_block(f: &mut impl FileReader) -> Result<Block> {
-    //    let mut prefix_buf = ::std::mem::MaybeUninit::<[u8; 7]>::uninit();
-    //    unsafe {
-    //        io::read_exact(f, prefix_buf.as_mut_ptr()).await?;
-    //    }
-    //    let prefix_buf = unsafe { prefis_buf.assume_init() };
     let mut cursor = CRC16Reader::new(f);
     let block = BlockHeaderCommon::read_from_file(&mut cursor).await?;
 
