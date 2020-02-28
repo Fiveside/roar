@@ -7,11 +7,9 @@ mod block;
 mod error;
 mod io;
 
-use async_trait::async_trait;
 use clap::{crate_authors, crate_description, crate_name, crate_version, App, Arg};
 use error::Result;
 use futures::executor::block_on;
-use futures::prelude::*;
 
 fn main() {
     let matches = App::new(crate_name!())

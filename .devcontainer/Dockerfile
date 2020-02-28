@@ -3,7 +3,7 @@
 # Licensed under the MIT License. See https://go.microsoft.com/fwlink/?linkid=2090316 for license information.
 #-------------------------------------------------------------------------------------------------------------
 
-FROM rust:1
+FROM rust:1.41.1
 
 # Or your actual UID, GID on Linux if not the default 1000
 ARG USERNAME=vscode

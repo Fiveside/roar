@@ -59,6 +59,7 @@ mod tests {
     use super::*;
     use async_trait::async_trait;
     use std::io::{Cursor, Read, Seek};
+    use crate::io::BufReader;
 
     fn archive_header_prefix() -> Vec<u8> {
         vec![207, 144, 115, 0, 0, 13, 0]
@@ -68,23 +69,6 @@ mod tests {
         let mut buf = archive_header_prefix();
         buf.extend(&[1, 0, 2, 0, 0, 0]);
         buf
-    }
-
-    struct BufReader {
-        cursor: Cursor<Vec<u8>>,
-    }
-
-    #[async_trait]
-    impl FileReader for BufReader {
-        async fn read(&mut self, amount: usize) -> Result<Vec<u8>> {
-            let mut buf = vec![0; amount];
-            self.cursor.read_exact(&mut buf).unwrap();
-            Ok(buf)
-        }
-
-        async fn seek(&mut self, pos: ::futures::io::SeekFrom) -> Result<u64> {
-            Ok(self.cursor.seek(pos)?)
-        }
     }
 
     //    fn reader(buf: Vec<u8>) -> CRC16Reader<'_, BufReader> {
@@ -101,10 +85,8 @@ mod tests {
     //    }
 
     #[async_std::test]
-    async fn test_archive_header_read_too_small() -> Result<()> {
-        let mut bufreader = BufReader {
-            cursor: Cursor::new(archive_header()),
-        };
+    async fn test_archive_header_read_crc() -> Result<()> {
+        let mut bufreader = reader(archive_header());
         let mut f = CRC16Reader::new(&mut bufreader);
         let prefix = BlockHeaderCommon::parse(&mut f).await?;
         let ah = ArchiveHeader::parse(f, prefix).await?;

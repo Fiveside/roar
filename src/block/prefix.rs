@@ -149,20 +149,20 @@ mod tests {
     //     assert!(res.is_err());
     // }
 
-    //    #[test]
-    //    fn test_block_prefix_read_reads_magic() {
-    //        let magic = magic_block_prefix();
-    //        let res = BlockPrefix::from_buf(&magic);
-    //        assert!(res.is_ok());
-    //
-    //        let (bh, rest) = res.unwrap();
-    //        assert_eq!(bh.crc(), 0x6152);
-    //        assert_eq!(bh.block_type(), Some(HeadType::MarkerBlock));
-    //        assert_eq!(bh.flags(), 0x1a21);
-    //        assert_eq!(bh.size(), 0x0007);
-    //
-    //        assert_eq!(rest.len(), 0);
-    //    }
+    #[test]
+    fn test_block_prefix_read_reads_magic() {
+        let magic = magic_block_prefix();
+        let res = BlockPrefix::from_buf(&magic);
+        assert!(res.is_ok());
+
+        let (bh, rest) = res.unwrap();
+        assert_eq!(bh.crc(), 0x6152);
+        assert_eq!(bh.block_type(), Some(HeadType::MarkerBlock));
+        assert_eq!(bh.flags(), 0x1a21);
+        assert_eq!(bh.size(), 0x0007);
+
+        assert_eq!(rest.len(), 0);
+    }
 
     // #[test]
     // fn test_read_old_block_head_reads_block_head() {

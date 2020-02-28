@@ -5,6 +5,7 @@ use crc::crc16;
 use crc::crc16::Hasher16;
 use futures::io::{AsyncRead, AsyncReadExt, AsyncSeek, SeekFrom};
 use futures::AsyncSeekExt;
+use std::io::{Cursor, ReadExt};
 use std::marker::Unpin;
 
 #[async_trait]
@@ -115,5 +116,28 @@ impl<'a, T: FileReader> CRC16Reader<'a, T> {
 
     pub async fn seek(&mut self, pos: SeekFrom) -> Result<u64> {
         self.f.seek(pos).await
+    }
+}
+
+pub struct BufReader {
+    cursor: Cursor<Vec<u8>>,
+}
+
+impl BufReader {
+    pub fn new(inner: Cursor<Vec<u8>>) -> Self {
+        BufReader { cursor: inner }
+    }
+}
+
+#[async_trait]
+impl FileReader for BufReader {
+    async fn read(&mut self, amount: usize) -> Result<Vec<u8>> {
+        let mut buf = vec![0; amount];
+        self.cursor.read_exact(&mut buf).unwrap();
+        Ok(buf)
+    }
+
+    async fn seek(&mut self, pos: ::futures::io::SeekFrom) -> Result<u64> {
+        Ok(self.cursor.seek(pos)?)
     }
 }
