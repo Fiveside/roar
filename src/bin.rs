@@ -3,6 +3,9 @@
 // #[macro_use]
 // extern crate num_derive;
 
+#![allow(dead_code)]
+#![allow(unused_imports)]
+
 mod block;
 mod error;
 mod io;
@@ -29,7 +32,7 @@ fn main() {
 }
 
 async fn run(filename: &str) -> Result<()> {
-    let f = ::async_std::fs::File::open(filename).await.unwrap();
+    let f = ::async_std::fs::File::open(filename).await?;
     let bf = ::async_std::io::BufReader::new(f);
     let mut fr = io::AsyncFileReader::new(bf);
 

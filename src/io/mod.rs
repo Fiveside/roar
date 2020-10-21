@@ -5,7 +5,7 @@ use crc::crc16;
 use crc::crc16::Hasher16;
 use futures::io::{AsyncRead, AsyncReadExt, AsyncSeek, SeekFrom};
 use futures::AsyncSeekExt;
-use std::io::{Cursor, ReadExt};
+use std::io::{Cursor, Read, Seek};
 use std::marker::Unpin;
 
 #[async_trait]
