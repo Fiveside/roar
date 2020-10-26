@@ -8,8 +8,9 @@
 
 mod block;
 mod error;
-mod io;
+// mod io;
 
+use async_std::io::ReadExt;
 use clap::{crate_authors, crate_description, crate_name, crate_version, App, Arg};
 use error::Result;
 use futures::executor::block_on;
@@ -32,15 +33,38 @@ fn main() {
 }
 
 async fn run(filename: &str) -> Result<()> {
-    let f = ::async_std::fs::File::open(filename).await?;
-    let bf = ::async_std::io::BufReader::new(f);
-    let mut fr = io::AsyncFileReader::new(bf);
+    // for seed in 0u32..=u32::MAX {
+    //     use crc::Hasher32;
+    //     let mut hasher = crc::crc32::Digest::new(seed);
+    //     hasher.write(&[0x52, 0x61, 0x72, 0x21, 0x1a, 0x07, 0x00]);
+    //     let sum = hasher.sum32();
+    //     if sum & 0xFFFF == 24914 {
+    //         println!("FOUND 0x0000FFFF -> {}", seed);
+    //     }
+    //     if (sum & 0xFFFF0000) >> 16 == 24914 {
+    //         println!("FOUND 0xFFFF0000 -> {}", seed);
+    //     }
+    // }
 
-    for _ in 0..3 {
-        let block = block::read_block(&mut fr).await?;
-        println!("OOOooooo {:?}", block);
-    }
+    let f = ::async_std::fs::File::open(filename).await?;
+    let mut bf = ::async_std::io::BufReader::new(f);
+
+    let mut buf = vec![];
+    bf.read_to_end(&mut buf).await?;
+
+    let (rest, _) = block::rar3_marker_block(&buf).unwrap();
+
+    let (_more, archive) = block::archive_header(rest).unwrap();
+    println!("Second {:#?}", archive);
+
     Ok(())
+    // let mut fr = io::AsyncFileReader::new(bf);
+
+    // for _ in 0..3 {
+    //     let block = block::read_block(&mut fr).await?;
+    //     println!("OOOooooo {:?}", block);
+    // }
+    // Ok(())
 }
 
 // async fn run(filename: &str) -> Result<()> {

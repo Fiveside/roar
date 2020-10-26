@@ -1,3 +1,4 @@
+use nom;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -10,6 +11,8 @@ pub enum RoarError {
 
     #[error("Unknown block type: {0}")]
     UnknownBlockType(u8),
+    // #[error("Nom Parsing Error: {0:?}")]
+    // NomParsingError(nom::Err),
 }
 
 pub type Result<T> = ::std::result::Result<T, RoarError>;
