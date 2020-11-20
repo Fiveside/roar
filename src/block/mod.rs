@@ -1,10 +1,11 @@
 // RAR3 Block parsing!
 use std::fmt::Debug;
 
+use nom::branch::alt;
 use nom::bytes::streaming::tag;
-use nom::combinator::consumed;
+use nom::combinator::{consumed, map, map_opt, not, verify};
 use nom::number::streaming::{le_u16, le_u32, le_u8};
-use nom::sequence::tuple;
+use nom::sequence::{pair, tuple};
 use nom::IResult;
 
 use crc::{crc32, Hasher32};
@@ -131,21 +132,36 @@ fn block_preamble_opening(
     required_marker: u8,
 ) -> impl Fn(&[u8]) -> IResult<&[u8], (u16, u16, u32)> {
     move |input: &[u8]| {
-        let (start_rest, (declared_crc, _, flags, low_head_size)) =
-            tuple((le_u16, tag(&[required_marker] as &[u8]), le_u16, le_u16))(input)?;
+        // let (start_rest, (declared_crc, _, flags, low_head_size)) =
+        //     tuple((le_u16, tag(&[required_marker] as &[u8]), le_u16, le_u16))(input)?;
 
-        let (rest, header_size) = if flags & 0x8000 != 0 {
-            let (end_rest, large_head_size) = le_u32(start_rest)?;
-            let new_head_size = low_head_size as u32 + large_head_size;
+        let head_size = map(le_u16, |x| x as u32);
+        let add_size = le_u32;
 
-            let reduced_head_size = new_head_size.checked_sub(11).unwrap();
-            (end_rest, reduced_head_size)
-        } else {
-            let reduced_head_size = (low_head_size as u32).checked_sub(7).unwrap();
-            (start_rest, reduced_head_size)
-        };
+        // If we only have head size, then the size of the preamble is 7 bytes
+        let just_head_size = map_opt(le_u16, |x| (x as u32).checked_sub(7));
 
-        Ok((rest, (declared_crc, flags, header_size)))
+        // If we have both head size and add size, then the size of the
+        // preamble is 11 bytes.
+        let both_size = map_opt(pair(head_size, add_size), |(l, r)| {
+            l.checked_add(r).and_then(|x| x.checked_sub(11))
+        });
+
+        let has_add_size = verify(le_u16, |x| x & 0x8000 != 0);
+        let no_add_size = verify(le_u16, |x| x & 0x8000 == 0);
+
+        let flags_and_size = alt((
+            pair(has_add_size, both_size),
+            pair(no_add_size, just_head_size),
+        ));
+
+        let block_type_binding = [required_marker];
+        let block_type = tag(&block_type_binding);
+        let crc = le_u16;
+        let (rest, (declared_crc, _block_type, (flags, size))) =
+            tuple((crc, block_type, flags_and_size))(input)?;
+
+        Ok((rest, (declared_crc, flags, size)))
     }
 }
 
