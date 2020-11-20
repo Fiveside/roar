@@ -103,38 +103,67 @@ impl Debug for ArchiveFlags {
 }
 
 struct BlockPreamble {
+    // checksum as declared in the block header
     declared_header_crc: u16,
+
+    // Flags as declared
     flags: u16,
-    header_size: u64,
+
+    // Header size as declared minus bytes required for this block preamble
+    remaining_header_size: u32,
+
+    // A digest seeded with all data consumed while parsing this block so far
     rolling_crc: crc32::Digest,
 }
 
-fn block_preamble(
-    required_marker: u8,
-) -> impl Fn(&[u8]) -> IResult<&[u8], &[u8], nom::error::ParseError> {
-    move |input: &[u8]| {
-        // let declared_crc = le_u16;
-        // let marker = tag(&[required_marker]);
-        // let flags = le_u16;
-        // let head_size = le_u16;
+impl Debug for BlockPreamble {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BlockPreamble")
+            .field("declared_header_crc", &self.declared_header_crc)
+            .field("flags", &self.flags)
+            .field("remaining_header_size", &self.remaining_header_size)
+            .field("rolling_crc", &self.rolling_crc.sum32())
+            .finish()
+    }
+}
 
+fn block_preamble_opening(
+    required_marker: u8,
+) -> impl Fn(&[u8]) -> IResult<&[u8], (u16, u16, u32)> {
+    move |input: &[u8]| {
         let (start_rest, (declared_crc, _, flags, low_head_size)) =
-            tuple((le_u16, tag(&[required_marker]), le_u16, le_u16))(input)?;
+            tuple((le_u16, tag(&[required_marker] as &[u8]), le_u16, le_u16))(input)?;
 
         let (rest, header_size) = if flags & 0x8000 != 0 {
             let (end_rest, large_head_size) = le_u32(start_rest)?;
-            (end_rest, low_head_size as u32 + large_head_size)
+            let new_head_size = low_head_size as u32 + large_head_size;
+
+            let reduced_head_size = new_head_size.checked_sub(11).unwrap();
+            (end_rest, reduced_head_size)
         } else {
-            (start_rest, low_head_size as u32)
+            let reduced_head_size = (low_head_size as u32).checked_sub(7).unwrap();
+            (start_rest, reduced_head_size)
         };
+
+        Ok((rest, (declared_crc, flags, header_size)))
+    }
+}
+
+fn block_preamble(required_marker: u8) -> impl Fn(&[u8]) -> IResult<&[u8], BlockPreamble> {
+    move |input: &[u8]| {
+        let (rest, (consumed_buf, (declared_crc, flags, adjusted_head_size))) =
+            consumed(block_preamble_opening(required_marker))(input)?;
+
+        let mut digest = crc32::Digest::new(0xEDB88320);
+        digest.write(consumed_buf);
 
         Ok((
             rest,
             BlockPreamble {
                 declared_header_crc: declared_crc,
                 flags: flags,
-                header_size: header_size,
-                rolling_crc: crc32::Digest::new(0xEDB88320),
+                remaining_header_size: adjusted_head_size,
+                rolling_crc: digest,
             },
         ))
     }
@@ -239,15 +268,61 @@ pub struct FileHeader {
     // ext_time: vec![] // optional, ext_time itself is variadic.
 }
 
-pub fn file_header(input: &[u8]) -> IResult<&[u8], FileHeader> {}
+pub fn file_header(input: &[u8]) -> IResult<&[u8], FileHeader> {
+    unimplemented!()
+}
 
 #[cfg(test)]
 mod test {
     use super::*;
+
     #[test]
     fn preamble_parse_matches_required_tag() {
         let buf = RAR3_MAGIC;
-        let (rest, _) = block_preamble(0x73)(&buf);
+        let (rest, _) = block_preamble(0x72)(&buf).unwrap();
         assert_eq!(rest, &[]);
+    }
+
+    #[test]
+    fn preamble_parse_rejects_bad_tags() {
+        let buf = RAR3_MAGIC;
+        let res = block_preamble(0x73)(&buf);
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn preamble_looks_for_add_size() {
+        let flags_high: u8 = 0x80;
+        let flags_low = 0x00;
+        let buf = [82, 97, 114, flags_low, flags_high, 12, 0, 2, 0, 0, 0];
+        let (rest, res) = block_preamble(0x72)(&buf).unwrap();
+        assert_eq!(rest, &[]);
+        assert_eq!(res.remaining_header_size, 3);
+    }
+
+    #[test]
+    fn preamble_ignores_add_size() {
+        let flags_high: u8 = 0x00;
+        let flags_low = 0x00;
+        let buf = [82, 97, 114, flags_low, flags_high, 8, 0];
+        let (rest, res) = block_preamble(0x72)(&buf).unwrap();
+        assert_eq!(rest, &[]);
+        assert_eq!(res.remaining_header_size, 1);
+    }
+
+    #[test]
+    fn preamble_header_size_underflow_returns_error() {
+        let flags_high: u8 = 0x00;
+        let flags_low: u8 = 0x00;
+        let buf = [82, 97, 114, flags_low, flags_high, 3, 0];
+        let res = block_preamble(0x72)(&buf);
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn preamble_digest_is_seeded() {
+        let buf = RAR3_MAGIC;
+        let (_rest, res) = block_preamble(0x72)(&buf).unwrap();
+        assert_eq!(res.rolling_crc.sum32(), 803352714);
     }
 }
