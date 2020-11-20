@@ -6,63 +6,16 @@ use nom::sequence::tuple;
 use nom::IResult;
 use std::fmt::Debug;
 
-pub struct HeadFlags(u16);
+pub trait RarFlags {
+    fn get_flags(&self) -> u16;
 
-impl HeadFlags {
     fn has_add_size(&self) -> bool {
-        self.0 & 0x8000 != 0
+        self.get_flags() & 0x8000 != 0
     }
 
     fn marked_as_deleted(&self) -> bool {
-        self.0 & 0x4000 != 0
+        self.get_flags() & 0x4000 != 0
     }
-}
-
-impl Debug for HeadFlags {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("HeadFlags")
-            .field("raw_value", &self.0)
-            .field("has_add_size", &self.has_add_size())
-            .field("marked_as_deleted", &self.marked_as_deleted())
-            .finish()
-    }
-}
-
-#[derive(Debug)]
-pub struct BlockCommon {
-    head_crc: u16,
-    hasher: RarCRC,
-    head_flags: u16,
-    size: u32,
-}
-
-pub fn block_common(block_type: u8) -> impl Fn(&[u8]) -> IResult<&[u8], BlockCommon> {
-    return move |input: &[u8]| -> IResult<&[u8], BlockCommon> {
-        let (first_rest, (crc, (crc_buf, (_typ, flags, size)))) = tuple((
-            le_u16,
-            consumed(tuple((tag(&[block_type]), le_u16, le_u16))),
-        ))(input)?;
-
-        let mut hasher = RarCRC::new();
-        hasher.write(crc_buf);
-
-        let (rest, add_size) = if HeadFlags(flags).has_add_size() {
-            let (rest, (more_rest, add_size)) = consumed(le_u32)(first_rest)?;
-            hasher.write(more_rest);
-            (rest, Some(add_size))
-        } else {
-            (first_rest, None)
-        };
-
-        let bc = BlockCommon {
-            head_crc: crc,
-            hasher: hasher,
-            head_flags: flags,
-            size: add_size.unwrap_or(0).checked_add(u32::from(size)).unwrap(),
-        };
-
-        Ok((rest, bc))
-    };
 }
 
 struct RarCRC(crc32::Digest);
