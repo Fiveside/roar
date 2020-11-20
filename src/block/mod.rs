@@ -3,7 +3,7 @@ use std::fmt::Debug;
 
 use nom::branch::alt;
 use nom::bytes::streaming::tag;
-use nom::combinator::{consumed, map, map_opt, not, verify};
+use nom::combinator::{consumed, map, map_opt, not, recognize, verify};
 use nom::number::streaming::{le_u16, le_u32, le_u8};
 use nom::sequence::{pair, tuple};
 use nom::IResult;
@@ -31,6 +31,12 @@ pub fn rar3_marker_block(input: &[u8]) -> IResult<&[u8], &[u8]> {
 
 pub fn rar5_marker_block(input: &[u8]) -> IResult<&[u8], &[u8]> {
     tag(&RAR5_MAGIC)(input)
+}
+
+#[derive(Debug)]
+pub struct CrcResult {
+    expected: u16,
+    actual: u32,
 }
 
 pub struct ArchiveFlags(u16);
@@ -187,38 +193,49 @@ fn block_preamble(required_marker: u8) -> impl Fn(&[u8]) -> IResult<&[u8], Block
 
 #[derive(Debug)]
 pub struct ArchiveHeader {
-    head_crc: u16,
-    head_type: u8,
+    crc: CrcResult,
     head_flags: ArchiveFlags,
-    head_size: u16, // archive header total size including archive comments
-    reserved1: u16,
-    reserved2: u32,
 }
 
 pub fn archive_header(input: &[u8]) -> IResult<&[u8], ArchiveHeader> {
-    let crc = le_u16;
-    let marker = tag(&[0x73]);
-    let content = tuple((marker, le_u16, le_u16, le_u16, le_u32));
-    let (rest, (crc, (crc_buf, header_contents))) = tuple((crc, consumed(content)))(input)?;
-    let (_typ, flags, size, res1, res2) = header_contents;
+    // let crc = le_u16;
+    // let marker = tag(&[0x73]);
+    // let content = tuple((marker, le_u16, le_u16, le_u16, le_u32));
+    // let (rest, (crc, (crc_buf, header_contents))) = tuple((crc, consumed(content)))(input)?;
+    // let (_typ, flags, size, res1, res2) = header_contents;
 
-    let mut hasher = crc32::Digest::new(0xEDB88320);
-    hasher.write(crc_buf);
-    let computed_crc = hasher.sum32();
-    println!(
-        "ArchiveHeader expects crc {} got {} {}",
-        crc,
-        computed_crc,
-        computed_crc & 0xffff
-    );
+    let preamble = block_preamble(0x73);
+    let reserved = recognize(pair(le_u16, le_u32));
+    let verified_preamble = verify(preamble, |p| p.remaining_header_size == 6);
+
+    let (rest, (preamble, reserved_buf)) = pair(verified_preamble, reserved)(input)?;
+
+    let BlockPreamble {
+        declared_header_crc,
+        flags,
+        rolling_crc: mut hasher,
+        ..
+    } = preamble;
+
+    hasher.write(reserved_buf);
+    let actual_crc = hasher.sum32();
+
+    // let mut hasher = crc32::Digest::new(0xEDB88320);
+    // hasher.write(crc_buf);
+    // let computed_crc = hasher.sum32();
+    // println!(
+    //     "ArchiveHeader expects crc {} got {} {}",
+    //     crc,
+    //     computed_crc,
+    //     computed_crc & 0xffff
+    // );
 
     let ah = ArchiveHeader {
-        head_crc: crc,
-        head_type: 0x73,
+        crc: CrcResult {
+            expected: declared_header_crc,
+            actual: actual_crc,
+        },
         head_flags: ArchiveFlags(flags),
-        head_size: size,
-        reserved1: res1,
-        reserved2: res2,
     };
 
     Ok((rest, ah))
@@ -330,9 +347,28 @@ mod test {
     fn preamble_header_size_underflow_returns_error() {
         let flags_high: u8 = 0x00;
         let flags_low: u8 = 0x00;
-        let buf = [82, 97, 114, flags_low, flags_high, 3, 0];
-        let res = block_preamble(0x72)(&buf);
-        assert!(res.is_err());
+        for size in 0..7 {
+            let buf = [82, 97, 114, flags_low, flags_high, size, 0];
+            let res = block_preamble(0x72)(&buf);
+            assert!(
+                res.is_err(),
+                format!("size of {} did not return error", size)
+            );
+        }
+    }
+
+    #[test]
+    fn preamble_add_size_underflow_returns_error() {
+        let flags_high: u8 = 0x00;
+        let flags_low: u8 = 0x00;
+        for size in 0..11 {
+            let buf = [82, 97, 114, flags_low, flags_high, 0, 0, size, 0, 0, 0];
+            let res = block_preamble(0x72)(&buf);
+            assert!(
+                res.is_err(),
+                format!("size of {} did not return error", size)
+            );
+        }
     }
 
     #[test]
