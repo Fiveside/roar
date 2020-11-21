@@ -17,6 +17,19 @@ pub struct CrcResult {
     actual: u32,
 }
 
+impl CrcResult {
+    pub fn new(expected: u16, actual: u32) -> Self {
+        Self { expected, actual }
+    }
+    pub fn from_preamble(buf: &[u8], preamble: BlockPreamble) -> Self {
+        let expected = preamble.declared_header_crc;
+        let mut hasher = preamble.rolling_crc;
+        hasher.write(buf);
+        let actual = hasher.sum32();
+        Self { expected, actual }
+    }
+}
+
 #[derive(Debug)]
 pub struct ArchiveHeader {
     crc: CrcResult,
