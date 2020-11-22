@@ -11,7 +11,7 @@ use nom::IResult;
 
 use crc::Hasher32;
 
-#[derive(Debug, Copy)]
+#[derive(Debug, Copy, Clone)]
 pub struct FileFlags(u16);
 
 impl FileFlags {
@@ -150,7 +150,7 @@ fn is_not_null(test: u8) -> bool {
     !is_null(test)
 }
 
-fn unicode_filename(input: &[u8]) -> IResult<&[u8], FileName> {
+fn packed_unicode_filename(input: &[u8]) -> IResult<&[u8], FileName> {
     let non_unicode_parser = take_while(is_not_null);
     let sep = tag(&[0]);
     let unicode_parser = rest;
@@ -163,26 +163,32 @@ fn unicode_filename(input: &[u8]) -> IResult<&[u8], FileName> {
     Ok((rest, FileName::new_unicode(non_unicode, unicode)))
 }
 
-fn read_file_name(input: &[u8], flags: FileFlags) -> IResult<&[u8], FileName> {
-    let skip1 = tuple((
-        pack_size,
-        unpack_size,
-        host_os,
-        file_crc,
-        ftime,
-        unpack_version,
-        packing_method,
-    ));
+fn raw_filename_buffer(flags: FileFlags) -> impl FnMut(&[u8]) -> IResult<&[u8], &[u8]> {
+    move |input: &[u8]| {
+        let skip1 = tuple((
+            pack_size,
+            unpack_size,
+            host_os,
+            file_crc,
+            ftime,
+            unpack_version,
+            packing_method,
+        ));
 
-    let skip2 = tuple((attrs, high_pack_size(flags), high_unpack_size(flags)));
-    let size = terminated(preceded(skip1, le_u16), skip2);
+        let skip2 = tuple((attrs, high_pack_size(flags), high_unpack_size(flags)));
+        let size = terminated(preceded(skip1, le_u16), skip2);
+        length_data(size)(input)
+    }
+}
+
+fn read_file_name(input: &[u8], flags: FileFlags) -> IResult<&[u8], FileName> {
     let non_unicode_name = cond(
         !flags.has_unicode_filename(),
-        map(length_data(size), |x| FileName::new_non_unicode(x)),
+        map(raw_filename_buffer(flags), |x| FileName::new_non_unicode(x)),
     );
     let unicode_name = cond(
         flags.has_unicode_filename(),
-        map_parser(length_data(size), unicode_filename),
+        map_parser(raw_filename_buffer(flags), packed_unicode_filename),
     );
     let (rest, filename_opt) = alt((non_unicode_name, unicode_name))(input)?;
 
