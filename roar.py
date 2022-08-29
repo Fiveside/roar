@@ -158,6 +158,75 @@ class Rar3ArchiveHeader(Rar3Block):
     def __repr__(self):
         return f"ArchiveHeader(valid={self.is_valid()})"
 
+class Rar3FileHeader(Rar3Block):
+    @dataclass
+    class Rar3FileHeaderFlags(Rar3HeaderFlags):
+        @property
+        def continued_from_previous_volume(self):
+            return self.flags & 0x01
+
+        @property
+        def continues_in_next_volume(self):
+            return self.flags & 0x02
+
+        @property
+        def encrypted_with_password(self):
+            return self.flags & 0x04
+
+        @property
+        def comment_present(self):
+            return self.flags & 0x08
+
+        @property
+        def is_member_of_solid_block(self):
+            return self.flags & 0x10
+
+        @property
+        def dictionary_size(self):
+            # Bits 7, 6, and 5 are used to determine this:
+            bits = (
+                bool(self.flags & 0x80),
+                bool(self.flags & 0x40),
+                bool(self.flags & 0x20)
+            )
+            dictmap = {
+                (False, False, False): 64,
+                (False, False, True): 128,
+                (False, True, False): 256,
+                (False, True, True): 512,
+                (True, False, False): 1024,
+                (True, False, True): 2048,
+                (True, True, False): 4096,
+                # (True, True, True): File is a dictionary
+            }
+            if bits in dictmap:
+                return dictmap[bits]
+            raise NotImplementedError("File is probably a dictionary")
+
+        @property
+        def high_fields_present(self):
+            '''If this is true then the header uses HIGH_PACK_SIZE and HIGH_UNPACK_SIZE'''
+            return self.flags & 0x100
+
+        @property
+        def has_unicode_packed_filename(self):
+            return self.flags & 0x200
+
+        @property
+        def has_salt(self):
+            return self.flags & 0x400
+
+        @property
+        def has_version_tag(self):
+            return self.flags & 0x800
+
+    def __init__(self, base, crc, file_crc):
+        pass
+
+    @classmethod
+    def parse(cls, base, rario):
+        flags = cls.Rar3FileHeaderFlags(base.flags.flags)
+
 
 RAR3_BLOCK_TYPES = {0x73: Rar3ArchiveHeader}
 
@@ -169,10 +238,11 @@ def parse_block(rario):
 
 
 def rar3file(rario):
-    block = parse_block(rario)
-    import pdb
+    while True:
+        block = parse_block(rario)
+        import pdb
 
-    pdb.set_trace()
+        pdb.set_trace()
 
 
 def rar5file(rario):
